@@ -23,6 +23,7 @@ import org.apache.catalina.LifecycleEvent;
 import org.apache.catalina.LifecycleListener;
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.core.AprLifecycleListener;
+import org.apache.catalina.valves.RemoteIpValve;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -31,6 +32,7 @@ import org.springframework.boot.web.reactive.server.AbstractReactiveWebServerFac
 import org.springframework.http.server.reactive.HttpHandler;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -99,17 +101,17 @@ public class TomcatReactiveWebServerFactoryTests
 	@Test
 	public void setNullConnectorCustomizersShouldThrowException() {
 		TomcatReactiveWebServerFactory factory = getFactory();
-		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.expectMessage("Customizers must not be null");
-		factory.setTomcatConnectorCustomizers(null);
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> factory.setTomcatConnectorCustomizers(null))
+				.withMessageContaining("Customizers must not be null");
 	}
 
 	@Test
 	public void addNullAddConnectorCustomizersShouldThrowException() {
 		TomcatReactiveWebServerFactory factory = getFactory();
-		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.expectMessage("Customizers must not be null");
-		factory.addConnectorCustomizers((TomcatConnectorCustomizer[]) null);
+		assertThatIllegalArgumentException().isThrownBy(
+				() -> factory.addConnectorCustomizers((TomcatConnectorCustomizer[]) null))
+				.withMessageContaining("Customizers must not be null");
 	}
 
 	@Test
@@ -125,6 +127,15 @@ public class TomcatReactiveWebServerFactoryTests
 		for (TomcatConnectorCustomizer listener : listeners) {
 			ordered.verify(listener).customize(any(Connector.class));
 		}
+	}
+
+	@Test
+	public void useForwardedHeaders() {
+		TomcatReactiveWebServerFactory factory = getFactory();
+		RemoteIpValve valve = new RemoteIpValve();
+		valve.setProtocolHeader("X-Forwarded-Proto");
+		factory.addEngineValves(valve);
+		assertForwardHeaderIsUsed(factory);
 	}
 
 }

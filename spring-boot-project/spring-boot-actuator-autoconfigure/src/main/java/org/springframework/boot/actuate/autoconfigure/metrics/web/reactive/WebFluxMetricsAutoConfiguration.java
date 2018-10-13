@@ -37,7 +37,7 @@ import org.springframework.core.annotation.Order;
 
 /**
  * {@link EnableAutoConfiguration Auto-configuration} for instrumentation of Spring
- * WebFlux MVC annotation-based programming model request mappings.
+ * WebFlux applications.
  *
  * @author Jon Schneider
  * @author Dmytro Nosan
@@ -66,7 +66,8 @@ public class WebFluxMetricsAutoConfiguration {
 	public MetricsWebFilter webfluxMetrics(MeterRegistry registry,
 			WebFluxTagsProvider tagConfigurer) {
 		return new MetricsWebFilter(registry, tagConfigurer,
-				this.properties.getWeb().getServer().getRequestsMetricName());
+				this.properties.getWeb().getServer().getRequestsMetricName(),
+				this.properties.getWeb().getServer().isAutoTimeRequests());
 	}
 
 	@Bean

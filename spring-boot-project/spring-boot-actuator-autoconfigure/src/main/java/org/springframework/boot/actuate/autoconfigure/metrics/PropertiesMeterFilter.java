@@ -19,9 +19,13 @@ package org.springframework.boot.actuate.autoconfigure.metrics;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.Meter.Id;
+import io.micrometer.core.instrument.Tag;
+import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.config.MeterFilter;
 import io.micrometer.core.instrument.config.MeterFilterReply;
 import io.micrometer.core.instrument.distribution.DistributionStatisticConfig;
@@ -35,21 +39,43 @@ import org.springframework.util.StringUtils;
  *
  * @author Jon Schneider
  * @author Phillip Webb
+ * @author Stephane Nicoll
+ * @author Artsiom Yudovin
+ * @author Alexander Abramov
  * @since 2.0.0
  */
 public class PropertiesMeterFilter implements MeterFilter {
 
-	private MetricsProperties properties;
+	private final MetricsProperties properties;
+
+	private final MeterFilter mapFilter;
 
 	public PropertiesMeterFilter(MetricsProperties properties) {
 		Assert.notNull(properties, "Properties must not be null");
 		this.properties = properties;
+		this.mapFilter = createMapFilter(properties.getTags());
+	}
+
+	private static MeterFilter createMapFilter(Map<String, String> tags) {
+		if (tags.isEmpty()) {
+			return new MeterFilter() {
+			};
+		}
+		Tags commonTags = Tags.of(tags.entrySet().stream()
+				.map((entry) -> Tag.of(entry.getKey(), entry.getValue()))
+				.collect(Collectors.toList()));
+		return MeterFilter.commonTags(commonTags);
 	}
 
 	@Override
 	public MeterFilterReply accept(Meter.Id id) {
-		boolean enabled = lookup(this.properties.getEnable(), id, true);
+		boolean enabled = lookupWithFallbackToAll(this.properties.getEnable(), id, true);
 		return enabled ? MeterFilterReply.NEUTRAL : MeterFilterReply.DENY;
+	}
+
+	@Override
+	public Id map(Id id) {
+		return this.mapFilter.map(id);
 	}
 
 	@Override
@@ -57,10 +83,15 @@ public class PropertiesMeterFilter implements MeterFilter {
 			DistributionStatisticConfig config) {
 		Distribution distribution = this.properties.getDistribution();
 		return DistributionStatisticConfig.builder()
-				.percentilesHistogram(
-						lookup(distribution.getPercentilesHistogram(), id, null))
-				.percentiles(lookup(distribution.getPercentiles(), id, null))
+				.percentilesHistogram(lookupWithFallbackToAll(
+						distribution.getPercentilesHistogram(), id, null))
+				.percentiles(
+						lookupWithFallbackToAll(distribution.getPercentiles(), id, null))
 				.sla(convertSla(id.getType(), lookup(distribution.getSla(), id, null)))
+				.minimumExpectedValue(convertMeterValue(id.getType(),
+						lookup(distribution.getMinimumExpectedValue(), id, null)))
+				.maximumExpectedValue(convertMeterValue(id.getType(),
+						lookup(distribution.getMaximumExpectedValue(), id, null)))
 				.build().merge(config);
 	}
 
@@ -74,10 +105,25 @@ public class PropertiesMeterFilter implements MeterFilter {
 		return (converted.length != 0) ? converted : null;
 	}
 
+	private Long convertMeterValue(Meter.Type meterType, String value) {
+		return (value != null) ? MeterValue.valueOf(value).getValue(meterType) : null;
+	}
+
 	private <T> T lookup(Map<String, T> values, Id id, T defaultValue) {
 		if (values.isEmpty()) {
 			return defaultValue;
 		}
+		return doLookup(values, id, () -> defaultValue);
+	}
+
+	private <T> T lookupWithFallbackToAll(Map<String, T> values, Id id, T defaultValue) {
+		if (values.isEmpty()) {
+			return defaultValue;
+		}
+		return doLookup(values, id, () -> values.getOrDefault("all", defaultValue));
+	}
+
+	private <T> T doLookup(Map<String, T> values, Id id, Supplier<T> defaultValue) {
 		String name = id.getName();
 		while (StringUtils.hasLength(name)) {
 			T result = values.get(name);
@@ -87,7 +133,8 @@ public class PropertiesMeterFilter implements MeterFilter {
 			int lastDot = name.lastIndexOf('.');
 			name = (lastDot != -1) ? name.substring(0, lastDot) : "";
 		}
-		return values.getOrDefault("all", defaultValue);
+
+		return defaultValue.get();
 	}
 
 }

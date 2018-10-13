@@ -17,10 +17,10 @@
 package org.springframework.boot.autoconfigure.thymeleaf;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 
 import javax.annotation.PostConstruct;
+import javax.servlet.DispatcherType;
 
 import com.github.mxab.thymeleaf.extras.dataattribute.dialect.DataAttributeDialect;
 import nz.net.ultraq.thymeleaf.LayoutDialect;
@@ -53,11 +53,13 @@ import org.springframework.boot.autoconfigure.web.reactive.WebFluxAutoConfigurat
 import org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.context.properties.PropertyMapper;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.util.MimeType;
+import org.springframework.util.unit.DataSize;
 import org.springframework.web.servlet.resource.ResourceUrlEncodingFilter;
 
 /**
@@ -70,6 +72,7 @@ import org.springframework.web.servlet.resource.ResourceUrlEncodingFilter;
  * @author Eddú Meléndez
  * @author Daniel Fernández
  * @author Kazuki Shimizu
+ * @author Artsiom Yudovin
  */
 @Configuration
 @EnableConfigurationProperties(ThymeleafProperties.class)
@@ -136,14 +139,14 @@ public class ThymeleafAutoConfiguration {
 
 		private final Collection<ITemplateResolver> templateResolvers;
 
-		private final Collection<IDialect> dialects;
+		private final ObjectProvider<IDialect> dialects;
 
 		public ThymeleafDefaultConfiguration(ThymeleafProperties properties,
 				Collection<ITemplateResolver> templateResolvers,
-				ObjectProvider<Collection<IDialect>> dialectsProvider) {
+				ObjectProvider<IDialect> dialectsProvider) {
 			this.properties = properties;
 			this.templateResolvers = templateResolvers;
-			this.dialects = dialectsProvider.getIfAvailable(Collections::emptyList);
+			this.dialects = dialectsProvider;
 		}
 
 		@Bean
@@ -152,7 +155,7 @@ public class ThymeleafAutoConfiguration {
 			SpringTemplateEngine engine = new SpringTemplateEngine();
 			engine.setEnableSpringELCompiler(this.properties.isEnableSpringElCompiler());
 			this.templateResolvers.forEach(engine::addTemplateResolver);
-			this.dialects.forEach(engine::addDialect);
+			this.dialects.orderedStream().forEach(engine::addDialect);
 			return engine;
 		}
 
@@ -166,8 +169,11 @@ public class ThymeleafAutoConfiguration {
 		@Bean
 		@ConditionalOnMissingBean
 		@ConditionalOnEnabledResourceChain
-		public ResourceUrlEncodingFilter resourceUrlEncodingFilter() {
-			return new ResourceUrlEncodingFilter();
+		public FilterRegistrationBean<ResourceUrlEncodingFilter> resourceUrlEncodingFilter() {
+			FilterRegistrationBean<ResourceUrlEncodingFilter> registration = new FilterRegistrationBean<>(
+					new ResourceUrlEncodingFilter());
+			registration.setDispatcherTypes(DispatcherType.REQUEST, DispatcherType.ERROR);
+			return registration;
 		}
 
 		@Configuration
@@ -224,14 +230,14 @@ public class ThymeleafAutoConfiguration {
 
 		private final Collection<ITemplateResolver> templateResolvers;
 
-		private final Collection<IDialect> dialects;
+		private final ObjectProvider<IDialect> dialects;
 
 		ThymeleafReactiveConfiguration(ThymeleafProperties properties,
 				Collection<ITemplateResolver> templateResolvers,
-				ObjectProvider<Collection<IDialect>> dialectsProvider) {
+				ObjectProvider<IDialect> dialectsProvider) {
 			this.properties = properties;
 			this.templateResolvers = templateResolvers;
-			this.dialects = dialectsProvider.getIfAvailable(Collections::emptyList);
+			this.dialects = dialectsProvider;
 		}
 
 		@Bean
@@ -240,7 +246,7 @@ public class ThymeleafAutoConfiguration {
 			SpringWebFluxTemplateEngine engine = new SpringWebFluxTemplateEngine();
 			engine.setEnableSpringELCompiler(this.properties.isEnableSpringElCompiler());
 			this.templateResolvers.forEach(engine::addTemplateResolver);
-			this.dialects.forEach(engine::addDialect);
+			this.dialects.orderedStream().forEach(engine::addDialect);
 			return engine;
 		}
 
@@ -284,8 +290,8 @@ public class ThymeleafAutoConfiguration {
 			PropertyMapper map = PropertyMapper.get();
 			map.from(properties::getMediaTypes).whenNonNull()
 					.to(resolver::setSupportedMediaTypes);
-			map.from(properties::getMaxChunkSize).when((size) -> size > 0)
-					.to(resolver::setResponseMaxChunkSizeBytes);
+			map.from(properties::getMaxChunkSize).asInt(DataSize::toBytes)
+					.when((size) -> size > 0).to(resolver::setResponseMaxChunkSizeBytes);
 			map.from(properties::getFullModeViewNames).to(resolver::setFullModeViewNames);
 			map.from(properties::getChunkedModeViewNames)
 					.to(resolver::setChunkedModeViewNames);

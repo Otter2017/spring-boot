@@ -57,6 +57,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.util.unit.DataSize;
 import org.springframework.web.client.ResponseErrorHandler;
 import org.springframework.web.client.RestTemplate;
 
@@ -109,22 +110,6 @@ public class ServerPropertiesTests {
 	}
 
 	@Test
-	@Deprecated
-	public void testServletPathAsMapping() {
-		bind("server.servlet.path", "/foo/*");
-		assertThat(this.properties.getServlet().getServletMapping()).isEqualTo("/foo/*");
-		assertThat(this.properties.getServlet().getServletPrefix()).isEqualTo("/foo");
-	}
-
-	@Test
-	@Deprecated
-	public void testServletPathAsPrefix() {
-		bind("server.servlet.path", "/foo");
-		assertThat(this.properties.getServlet().getServletMapping()).isEqualTo("/foo/*");
-		assertThat(this.properties.getServlet().getServletPrefix()).isEqualTo("/foo");
-	}
-
-	@Test
 	public void testTomcatBinding() {
 		Map<String, String> map = new HashMap<>();
 		map.put("server.tomcat.accesslog.pattern", "%h %t '%r' %s %b");
@@ -174,8 +159,16 @@ public class ServerPropertiesTests {
 
 	@Test
 	public void testCustomizeHeaderSize() {
-		bind("server.max-http-header-size", "9999");
-		assertThat(this.properties.getMaxHttpHeaderSize()).isEqualTo(9999);
+		bind("server.max-http-header-size", "1MB");
+		assertThat(this.properties.getMaxHttpHeaderSize())
+				.isEqualTo(DataSize.ofMegabytes(1));
+	}
+
+	@Test
+	public void testCustomizeHeaderSizeUseBytesByDefault() {
+		bind("server.max-http-header-size", "1024");
+		assertThat(this.properties.getMaxHttpHeaderSize())
+				.isEqualTo(DataSize.ofKilobytes(1));
 	}
 
 	@Test
@@ -233,7 +226,7 @@ public class ServerPropertiesTests {
 
 	@Test
 	public void tomcatMaxHttpPostSizeMatchesConnectorDefault() throws Exception {
-		assertThat(this.properties.getTomcat().getMaxHttpPostSize())
+		assertThat(this.properties.getTomcat().getMaxHttpPostSize().toBytes())
 				.isEqualTo(getDefaultConnector().getMaxPostSize());
 	}
 
@@ -299,7 +292,7 @@ public class ServerPropertiesTests {
 		jetty.start();
 		org.eclipse.jetty.server.Connector connector = jetty.getServer()
 				.getConnectors()[0];
-		final AtomicReference<Throwable> failure = new AtomicReference<Throwable>();
+		final AtomicReference<Throwable> failure = new AtomicReference<>();
 		connector.addBean(new HttpChannel.Listener() {
 
 			@Override
@@ -325,14 +318,14 @@ public class ServerPropertiesTests {
 			});
 			HttpHeaders headers = new HttpHeaders();
 			headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-			MultiValueMap<String, Object> body = new LinkedMultiValueMap<String, Object>();
+			MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
 			StringBuilder data = new StringBuilder();
 			for (int i = 0; i < 250000; i++) {
 				data.append("a");
 			}
 			body.add("data", data.toString());
-			HttpEntity<MultiValueMap<String, Object>> entity = new HttpEntity<MultiValueMap<String, Object>>(
-					body, headers);
+			HttpEntity<MultiValueMap<String, Object>> entity = new HttpEntity<>(body,
+					headers);
 			template.postForEntity(
 					URI.create("http://localhost:" + jetty.getPort() + "/form"), entity,
 					Void.class);
@@ -340,7 +333,7 @@ public class ServerPropertiesTests {
 			String message = failure.get().getCause().getMessage();
 			int defaultMaxPostSize = Integer
 					.valueOf(message.substring(message.lastIndexOf(' ')).trim());
-			assertThat(this.properties.getJetty().getMaxHttpPostSize())
+			assertThat(this.properties.getJetty().getMaxHttpPostSize().toBytes())
 					.isEqualTo(defaultMaxPostSize);
 		}
 		finally {
@@ -350,7 +343,7 @@ public class ServerPropertiesTests {
 
 	@Test
 	public void undertowMaxHttpPostSizeMatchesDefault() {
-		assertThat(this.properties.getUndertow().getMaxHttpPostSize())
+		assertThat(this.properties.getUndertow().getMaxHttpPostSize().toBytes())
 				.isEqualTo(UndertowOptions.DEFAULT_MAX_ENTITY_SIZE);
 	}
 

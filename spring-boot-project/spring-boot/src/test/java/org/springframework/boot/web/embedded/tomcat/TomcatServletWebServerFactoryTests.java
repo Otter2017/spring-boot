@@ -41,6 +41,7 @@ import org.apache.catalina.SessionIdGenerator;
 import org.apache.catalina.Valve;
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.core.AprLifecycleListener;
+import org.apache.catalina.core.StandardContext;
 import org.apache.catalina.core.StandardWrapper;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.util.CharsetMapper;
@@ -61,9 +62,10 @@ import org.springframework.boot.web.servlet.server.AbstractServletWebServerFacto
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -174,7 +176,7 @@ public class TomcatServletWebServerFactoryTests
 	public void tomcatAdditionalConnectors() {
 		TomcatServletWebServerFactory factory = getFactory();
 		Connector[] listeners = new Connector[4];
-		Arrays.setAll(listeners, (i) -> stoppedConnector());
+		Arrays.setAll(listeners, (i) -> new Connector());
 		factory.addAdditionalTomcatConnectors(listeners);
 		this.webServer = factory.getWebServer();
 		Map<Service, Connector[]> connectors = ((TomcatWebServer) this.webServer)
@@ -183,18 +185,13 @@ public class TomcatServletWebServerFactoryTests
 				.isEqualTo(listeners.length + 1);
 	}
 
-	private Connector stoppedConnector() {
-		Connector connector = mock(Connector.class);
-		given(connector.getState()).willReturn(LifecycleState.STOPPED);
-		return connector;
-	}
-
 	@Test
 	public void addNullAdditionalConnectorThrows() {
 		TomcatServletWebServerFactory factory = getFactory();
-		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.expectMessage("Connectors must not be null");
-		factory.addAdditionalTomcatConnectors((Connector[]) null);
+		assertThatIllegalArgumentException()
+				.isThrownBy(
+						() -> factory.addAdditionalTomcatConnectors((Connector[]) null))
+				.withMessageContaining("Connectors must not be null");
 	}
 
 	@Test
@@ -230,33 +227,33 @@ public class TomcatServletWebServerFactoryTests
 	@Test
 	public void setNullTomcatContextCustomizersThrows() {
 		TomcatServletWebServerFactory factory = getFactory();
-		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.expectMessage("TomcatContextCustomizers must not be null");
-		factory.setTomcatContextCustomizers(null);
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> factory.setTomcatContextCustomizers(null))
+				.withMessageContaining("TomcatContextCustomizers must not be null");
 	}
 
 	@Test
 	public void addNullContextCustomizersThrows() {
 		TomcatServletWebServerFactory factory = getFactory();
-		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.expectMessage("TomcatContextCustomizers must not be null");
-		factory.addContextCustomizers((TomcatContextCustomizer[]) null);
+		assertThatIllegalArgumentException().isThrownBy(
+				() -> factory.addContextCustomizers((TomcatContextCustomizer[]) null))
+				.withMessageContaining("TomcatContextCustomizers must not be null");
 	}
 
 	@Test
 	public void setNullTomcatConnectorCustomizersThrows() {
 		TomcatServletWebServerFactory factory = getFactory();
-		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.expectMessage("TomcatConnectorCustomizers must not be null");
-		factory.setTomcatConnectorCustomizers(null);
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> factory.setTomcatConnectorCustomizers(null))
+				.withMessageContaining("TomcatConnectorCustomizers must not be null");
 	}
 
 	@Test
 	public void addNullConnectorCustomizersThrows() {
 		TomcatServletWebServerFactory factory = getFactory();
-		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.expectMessage("TomcatConnectorCustomizers must not be null");
-		factory.addConnectorCustomizers((TomcatConnectorCustomizer[]) null);
+		assertThatIllegalArgumentException().isThrownBy(
+				() -> factory.addConnectorCustomizers((TomcatConnectorCustomizer[]) null))
+				.withMessageContaining("TomcatConnectorCustomizers must not be null");
 	}
 
 	@Test
@@ -369,8 +366,8 @@ public class TomcatServletWebServerFactoryTests
 		// and avoid a leak
 		this.webServer.start();
 		// Lookups should no longer be possible
-		this.thrown.expect(NamingException.class);
-		new InitialContext().lookup("java:comp/env");
+		assertThatExceptionOfType(NamingException.class)
+				.isThrownBy(() -> new InitialContext().lookup("java:comp/env"));
 	}
 
 	@Test
@@ -425,6 +422,35 @@ public class TomcatServletWebServerFactoryTests
 		Tomcat tomcat = ((TomcatWebServer) this.webServer).getTomcat();
 		Context context = (Context) tomcat.getHost().findChildren()[0];
 		assertThat(context.getUseHttpOnly()).isFalse();
+	}
+
+	@Test
+	public void exceptionThrownOnLoadFailureWhenFailCtxIfServletStartFailsIsTrue() {
+		TomcatServletWebServerFactory factory = getFactory();
+		factory.addContextCustomizers((context) -> {
+			if (context instanceof StandardContext) {
+				((StandardContext) context).setFailCtxIfServletStartFails(true);
+			}
+		});
+		this.webServer = factory.getWebServer((context) -> {
+			context.addServlet("failing", FailingServlet.class).setLoadOnStartup(0);
+		});
+		assertThatExceptionOfType(WebServerException.class)
+				.isThrownBy(this.webServer::start);
+	}
+
+	@Test
+	public void exceptionThrownOnLoadFailureWhenFailCtxIfServletStartFailsIsFalse() {
+		TomcatServletWebServerFactory factory = getFactory();
+		factory.addContextCustomizers((context) -> {
+			if (context instanceof StandardContext) {
+				((StandardContext) context).setFailCtxIfServletStartFails(false);
+			}
+		});
+		this.webServer = factory.getWebServer((context) -> {
+			context.addServlet("failing", FailingServlet.class).setLoadOnStartup(0);
+		});
+		this.webServer.start();
 	}
 
 	@Override

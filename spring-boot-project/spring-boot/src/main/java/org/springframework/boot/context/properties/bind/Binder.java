@@ -45,7 +45,6 @@ import org.springframework.core.convert.ConverterNotFoundException;
 import org.springframework.core.env.Environment;
 import org.springframework.format.support.DefaultFormattingConversionService;
 import org.springframework.util.Assert;
-import org.springframework.util.ClassUtils;
 
 /**
  * A container object which Binds objects from one or more
@@ -215,7 +214,8 @@ public class Binder {
 			BindHandler handler, Context context, boolean allowRecursiveBinding) {
 		context.clearConfigurationProperty();
 		try {
-			if (!handler.onStart(name, target, context)) {
+			target = handler.onStart(name, target, context);
+			if (target == null) {
 				return null;
 			}
 			Object bound = bindObject(name, target, handler, context,
@@ -354,8 +354,7 @@ public class Binder {
 		if (resolved.isPrimitive() || NON_BEAN_CLASSES.contains(resolved)) {
 			return true;
 		}
-		String packageName = ClassUtils.getPackageName(resolved);
-		return packageName.startsWith("java.");
+		return resolved.getName().startsWith("java.");
 	}
 
 	private boolean containsNoDescendantOf(Stream<ConfigurationPropertySource> sources,
@@ -394,7 +393,7 @@ public class Binder {
 		private ConfigurationProperty configurationProperty;
 
 		Context() {
-			this.converter = new BindConverter(Binder.this.conversionService,
+			this.converter = BindConverter.get(Binder.this.conversionService,
 					Binder.this.propertyEditorInitializer);
 		}
 
@@ -467,6 +466,11 @@ public class Binder {
 
 		public BindConverter getConverter() {
 			return this.converter;
+		}
+
+		@Override
+		public Binder getBinder() {
+			return Binder.this;
 		}
 
 		@Override

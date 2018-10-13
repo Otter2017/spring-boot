@@ -35,14 +35,17 @@ import org.apache.commons.logging.LogFactory;
 
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.CachedIntrospectionResults;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.groovy.GroovyBeanDefinitionReader;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.BeanNameGenerator;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.beans.factory.xml.XmlBeanDefinitionReader;
 import org.springframework.boot.Banner.Mode;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
+import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.web.reactive.context.StandardReactiveWebEnvironment;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextInitializer;
@@ -75,7 +78,6 @@ import org.springframework.util.ObjectUtils;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StopWatch;
 import org.springframework.util.StringUtils;
-import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.context.support.StandardServletEnvironment;
 
 /**
@@ -165,11 +167,8 @@ public class SpringApplication {
 	 * The class name of application context that will be used by default for web
 	 * environments.
 	 */
-	public static final String DEFAULT_WEB_CONTEXT_CLASS = "org.springframework.boot."
+	public static final String DEFAULT_SERVLET_WEB_CONTEXT_CLASS = "org.springframework.boot."
 			+ "web.servlet.context.AnnotationConfigServletWebServerApplicationContext";
-
-	private static final String[] WEB_ENVIRONMENT_CLASSES = { "javax.servlet.Servlet",
-			"org.springframework.web.context.ConfigurableWebApplicationContext" };
 
 	/**
 	 * The class name of application context that will be used by default for reactive web
@@ -177,14 +176,6 @@ public class SpringApplication {
 	 */
 	public static final String DEFAULT_REACTIVE_WEB_CONTEXT_CLASS = "org.springframework."
 			+ "boot.web.reactive.context.AnnotationConfigReactiveWebServerApplicationContext";
-
-	private static final String REACTIVE_WEB_ENVIRONMENT_CLASS = "org.springframework."
-			+ "web.reactive.DispatcherHandler";
-
-	private static final String MVC_WEB_ENVIRONMENT_CLASS = "org.springframework."
-			+ "web.servlet.DispatcherServlet";
-
-	private static final String JERSEY_WEB_ENVIRONMENT_CLASS = "org.glassfish.jersey.server.ResourceConfig";
 
 	/**
 	 * Default banner location.
@@ -212,6 +203,8 @@ public class SpringApplication {
 
 	private boolean addCommandLineProperties = true;
 
+	private boolean addConversionService = true;
+
 	private Banner banner;
 
 	private ResourceLoader resourceLoader;
@@ -235,6 +228,8 @@ public class SpringApplication {
 	private Map<String, Object> defaultProperties;
 
 	private Set<String> additionalProfiles = new HashSet<>();
+
+	private boolean allowBeanDefinitionOverriding;
 
 	private boolean isCustomEnvironment = false;
 
@@ -267,25 +262,11 @@ public class SpringApplication {
 		this.resourceLoader = resourceLoader;
 		Assert.notNull(primarySources, "PrimarySources must not be null");
 		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
-		this.webApplicationType = deduceWebApplicationType();
+		this.webApplicationType = WebApplicationType.deduceFromClasspath();
 		setInitializers((Collection) getSpringFactoriesInstances(
 				ApplicationContextInitializer.class));
 		setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
 		this.mainApplicationClass = deduceMainApplicationClass();
-	}
-
-	private WebApplicationType deduceWebApplicationType() {
-		if (ClassUtils.isPresent(REACTIVE_WEB_ENVIRONMENT_CLASS, null)
-				&& !ClassUtils.isPresent(MVC_WEB_ENVIRONMENT_CLASS, null)
-				&& !ClassUtils.isPresent(JERSEY_WEB_ENVIRONMENT_CLASS, null)) {
-			return WebApplicationType.REACTIVE;
-		}
-		for (String className : WEB_ENVIRONMENT_CLASSES) {
-			if (!ClassUtils.isPresent(className, null)) {
-				return WebApplicationType.NONE;
-			}
-		}
-		return WebApplicationType.SERVLET;
 	}
 
 	private Class<?> deduceMainApplicationClass() {
@@ -393,14 +374,16 @@ public class SpringApplication {
 			logStartupInfo(context.getParent() == null);
 			logStartupProfileInfo(context);
 		}
-
 		// Add boot specific singleton beans
-		context.getBeanFactory().registerSingleton("springApplicationArguments",
-				applicationArguments);
+		ConfigurableListableBeanFactory beanFactory = context.getBeanFactory();
+		beanFactory.registerSingleton("springApplicationArguments", applicationArguments);
 		if (printedBanner != null) {
-			context.getBeanFactory().registerSingleton("springBootBanner", printedBanner);
+			beanFactory.registerSingleton("springBootBanner", printedBanner);
 		}
-
+		if (beanFactory instanceof DefaultListableBeanFactory) {
+			((DefaultListableBeanFactory) beanFactory)
+					.setAllowBeanDefinitionOverriding(this.allowBeanDefinitionOverriding);
+		}
 		// Load the sources
 		Set<Object> sources = getAllSources();
 		Assert.notEmpty(sources, "Sources must not be empty");
@@ -437,7 +420,7 @@ public class SpringApplication {
 
 	private <T> Collection<T> getSpringFactoriesInstances(Class<T> type,
 			Class<?>[] parameterTypes, Object... args) {
-		ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+		ClassLoader classLoader = getClassLoader();
 		// Use names and ensure unique to protect against duplicates
 		Set<String> names = new LinkedHashSet<>(
 				SpringFactoriesLoader.loadFactoryNames(type, classLoader));
@@ -496,6 +479,10 @@ public class SpringApplication {
 	 */
 	protected void configureEnvironment(ConfigurableEnvironment environment,
 			String[] args) {
+		if (this.addConversionService) {
+			environment.setConversionService(
+					ApplicationConversionService.getSharedInstance());
+		}
 		configurePropertySources(environment, args);
 		configureProfiles(environment, args);
 	}
@@ -597,7 +584,7 @@ public class SpringApplication {
 			try {
 				switch (this.webApplicationType) {
 				case SERVLET:
-					contextClass = Class.forName(DEFAULT_WEB_CONTEXT_CLASS);
+					contextClass = Class.forName(DEFAULT_SERVLET_WEB_CONTEXT_CLASS);
 					break;
 				case REACTIVE:
 					contextClass = Class.forName(DEFAULT_REACTIVE_WEB_CONTEXT_CLASS);
@@ -636,6 +623,10 @@ public class SpringApplication {
 				((DefaultResourceLoader) context)
 						.setClassLoader(this.resourceLoader.getClassLoader());
 			}
+		}
+		if (this.addConversionService) {
+			context.getBeanFactory().setConversionService(
+					ApplicationConversionService.getSharedInstance());
 		}
 	}
 
@@ -954,36 +945,12 @@ public class SpringApplication {
 	}
 
 	/**
-	 * Returns whether this {@link SpringApplication} is running within a web environment.
-	 * @return {@code true} if running within a web environment, otherwise {@code false}.
-	 * @see #setWebEnvironment(boolean)
-	 * @deprecated since 2.0.0 in favor of {@link #getWebApplicationType()}
-	 */
-	@Deprecated
-	public boolean isWebEnvironment() {
-		return this.webApplicationType == WebApplicationType.SERVLET;
-	}
-
-	/**
 	 * Returns the type of web application that is being run.
 	 * @return the type of web application
 	 * @since 2.0.0
 	 */
 	public WebApplicationType getWebApplicationType() {
 		return this.webApplicationType;
-	}
-
-	/**
-	 * Sets if this application is running within a web environment. If not specified will
-	 * attempt to deduce the environment based on the classpath.
-	 * @param webEnvironment if the application is running in a web environment
-	 * @deprecated since 2.0.0 in favor of
-	 * {@link #setWebApplicationType(WebApplicationType)}
-	 */
-	@Deprecated
-	public void setWebEnvironment(boolean webEnvironment) {
-		this.webApplicationType = (webEnvironment ? WebApplicationType.SERVLET
-				: WebApplicationType.NONE);
 	}
 
 	/**
@@ -995,6 +962,17 @@ public class SpringApplication {
 	public void setWebApplicationType(WebApplicationType webApplicationType) {
 		Assert.notNull(webApplicationType, "WebApplicationType must not be null");
 		this.webApplicationType = webApplicationType;
+	}
+
+	/**
+	 * Sets if bean definition overriding, by registering a definition with the same name
+	 * as an existing definition, should be allowed. Defaults to {@code false}.
+	 * @param allowBeanDefinitionOverriding if overriding is allowed
+	 * @since 2.1
+	 * @see DefaultListableBeanFactory#setAllowBeanDefinitionOverriding(boolean)
+	 */
+	public void setAllowBeanDefinitionOverriding(boolean allowBeanDefinitionOverriding) {
+		this.allowBeanDefinitionOverriding = allowBeanDefinitionOverriding;
 	}
 
 	/**
@@ -1050,6 +1028,16 @@ public class SpringApplication {
 	 */
 	public void setAddCommandLineProperties(boolean addCommandLineProperties) {
 		this.addCommandLineProperties = addCommandLineProperties;
+	}
+
+	/**
+	 * Sets if the {@link ApplicationConversionService} should be added to the application
+	 * context's {@link Environment}.
+	 * @param addConversionService if the application conversion service should be added
+	 * @since 2.1.0
+	 */
+	public void setAddConversionService(boolean addConversionService) {
+		this.addConversionService = addConversionService;
 	}
 
 	/**
@@ -1174,25 +1162,16 @@ public class SpringApplication {
 
 	/**
 	 * Sets the type of Spring {@link ApplicationContext} that will be created. If not
-	 * specified defaults to {@link #DEFAULT_WEB_CONTEXT_CLASS} for web based applications
-	 * or {@link AnnotationConfigApplicationContext} for non web based applications.
+	 * specified defaults to {@link #DEFAULT_SERVLET_WEB_CONTEXT_CLASS} for web based
+	 * applications or {@link AnnotationConfigApplicationContext} for non web based
+	 * applications.
 	 * @param applicationContextClass the context class to set
 	 */
 	public void setApplicationContextClass(
 			Class<? extends ConfigurableApplicationContext> applicationContextClass) {
 		this.applicationContextClass = applicationContextClass;
-		if (!isWebApplicationContext(applicationContextClass)) {
-			this.webApplicationType = WebApplicationType.NONE;
-		}
-	}
-
-	private boolean isWebApplicationContext(Class<?> applicationContextClass) {
-		try {
-			return WebApplicationContext.class.isAssignableFrom(applicationContextClass);
-		}
-		catch (NoClassDefFoundError ex) {
-			return false;
-		}
+		this.webApplicationType = WebApplicationType
+				.deduceFromApplicationContext(applicationContextClass);
 	}
 
 	/**

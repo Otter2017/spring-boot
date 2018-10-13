@@ -25,6 +25,7 @@ import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import org.springframework.web.reactive.HandlerMapping;
+import org.springframework.web.reactive.function.server.RouterFunctions;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.util.pattern.PathPatternParser;
 
@@ -36,6 +37,7 @@ import static org.mockito.Mockito.mock;
  * Tests for {@link WebFluxTags}.
  *
  * @author Brian Clozel
+ * @author Michael McFadyen
  */
 public class WebFluxTagsTests {
 
@@ -52,6 +54,15 @@ public class WebFluxTagsTests {
 	public void uriTagValueIsBestMatchingPatternWhenAvailable() {
 		this.exchange.getAttributes().put(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE,
 				this.parser.parse("/spring"));
+		this.exchange.getResponse().setStatusCode(HttpStatus.MOVED_PERMANENTLY);
+		Tag tag = WebFluxTags.uri(this.exchange);
+		assertThat(tag.getValue()).isEqualTo("/spring");
+	}
+
+	@Test
+	public void uriTagValueIsFnMatchingPatternWhenAvailable() {
+		this.exchange.getAttributes().put(RouterFunctions.MATCHING_PATTERN_ATTRIBUTE,
+				"/spring");
 		this.exchange.getResponse().setStatusCode(HttpStatus.MOVED_PERMANENTLY);
 		Tag tag = WebFluxTags.uri(this.exchange);
 		assertThat(tag.getValue()).isEqualTo("/spring");
@@ -79,12 +90,6 @@ public class WebFluxTagsTests {
 	}
 
 	@Test
-	public void uriTagIsUnknownWhenRequestIsNull() {
-		Tag tag = WebFluxTags.uri(null);
-		assertThat(tag.getValue()).isEqualTo("UNKNOWN");
-	}
-
-	@Test
 	public void methodTagToleratesNonStandardHttpMethods() {
 		ServerWebExchange exchange = mock(ServerWebExchange.class);
 		ServerHttpRequest request = mock(ServerHttpRequest.class);
@@ -92,6 +97,48 @@ public class WebFluxTagsTests {
 		given(request.getMethodValue()).willReturn("CUSTOM");
 		Tag tag = WebFluxTags.method(exchange);
 		assertThat(tag.getValue()).isEqualTo("CUSTOM");
+	}
+
+	@Test
+	public void outcomeTagIsUnknownWhenResponseStatusIsNull() {
+		this.exchange.getResponse().setStatusCode(null);
+		Tag tag = WebFluxTags.outcome(this.exchange);
+		assertThat(tag.getValue()).isEqualTo("UNKNOWN");
+	}
+
+	@Test
+	public void outcomeTagIsInformationalWhenResponseIs1xx() {
+		this.exchange.getResponse().setStatusCode(HttpStatus.CONTINUE);
+		Tag tag = WebFluxTags.outcome(this.exchange);
+		assertThat(tag.getValue()).isEqualTo("INFORMATIONAL");
+	}
+
+	@Test
+	public void outcomeTagIsSuccessWhenResponseIs2xx() {
+		this.exchange.getResponse().setStatusCode(HttpStatus.OK);
+		Tag tag = WebFluxTags.outcome(this.exchange);
+		assertThat(tag.getValue()).isEqualTo("SUCCESS");
+	}
+
+	@Test
+	public void outcomeTagIsRedirectionWhenResponseIs3xx() {
+		this.exchange.getResponse().setStatusCode(HttpStatus.MOVED_PERMANENTLY);
+		Tag tag = WebFluxTags.outcome(this.exchange);
+		assertThat(tag.getValue()).isEqualTo("REDIRECTION");
+	}
+
+	@Test
+	public void outcomeTagIsClientErrorWhenResponseIs4xx() {
+		this.exchange.getResponse().setStatusCode(HttpStatus.BAD_REQUEST);
+		Tag tag = WebFluxTags.outcome(this.exchange);
+		assertThat(tag.getValue()).isEqualTo("CLIENT_ERROR");
+	}
+
+	@Test
+	public void outcomeTagIsServerErrorWhenResponseIs5xx() {
+		this.exchange.getResponse().setStatusCode(HttpStatus.BAD_GATEWAY);
+		Tag tag = WebFluxTags.outcome(this.exchange);
+		assertThat(tag.getValue()).isEqualTo("SERVER_ERROR");
 	}
 
 }

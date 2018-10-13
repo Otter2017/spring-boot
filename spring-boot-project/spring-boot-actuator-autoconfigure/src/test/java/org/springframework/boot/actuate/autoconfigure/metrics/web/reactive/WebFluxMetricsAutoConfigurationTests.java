@@ -20,8 +20,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.Rule;
 import org.junit.Test;
 
-import org.springframework.boot.actuate.autoconfigure.metrics.MetricsAutoConfiguration;
-import org.springframework.boot.actuate.autoconfigure.metrics.export.simple.SimpleMetricsExportAutoConfiguration;
+import org.springframework.boot.actuate.autoconfigure.metrics.test.MetricsRun;
 import org.springframework.boot.actuate.autoconfigure.metrics.web.TestController;
 import org.springframework.boot.actuate.metrics.web.reactive.server.DefaultWebFluxTagsProvider;
 import org.springframework.boot.actuate.metrics.web.reactive.server.MetricsWebFilter;
@@ -47,9 +46,8 @@ import static org.mockito.Mockito.mock;
 public class WebFluxMetricsAutoConfigurationTests {
 
 	private ReactiveWebApplicationContextRunner contextRunner = new ReactiveWebApplicationContextRunner()
-			.withConfiguration(AutoConfigurations.of(MetricsAutoConfiguration.class,
-					SimpleMetricsExportAutoConfiguration.class,
-					WebFluxMetricsAutoConfiguration.class));
+			.with(MetricsRun.simple()).withConfiguration(
+					AutoConfigurations.of(WebFluxMetricsAutoConfiguration.class));
 
 	@Rule
 	public OutputCapture output = new OutputCapture();
@@ -95,6 +93,19 @@ public class WebFluxMetricsAutoConfigurationTests {
 					assertThat(registry.get("http.server.requests").meters()).hasSize(3);
 					assertThat(this.output.toString()).doesNotContain(
 							"Reached the maximum number of URI tags for 'http.server.requests'");
+				});
+	}
+
+	@Test
+	public void metricsAreNotRecordedIfAutoTimeRequestsIsDisabled() {
+		this.contextRunner
+				.withConfiguration(AutoConfigurations.of(WebFluxAutoConfiguration.class))
+				.withUserConfiguration(TestController.class)
+				.withPropertyValues(
+						"management.metrics.web.server.auto-time-requests=false")
+				.run((context) -> {
+					MeterRegistry registry = getInitializedMeterRegistry(context);
+					assertThat(registry.find("http.server.requests").meter()).isNull();
 				});
 	}
 

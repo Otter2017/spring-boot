@@ -403,8 +403,10 @@ sensible overriding of values. Properties are considered in the following order:
 on your home directory (`~/.spring-boot-devtools.properties` when devtools is active).
 . {spring-javadoc}/test/context/TestPropertySource.{dc-ext}[`@TestPropertySource`]
 annotations on your tests.
-. {dc-spring-boot-test}/context/SpringBootTest.{dc-ext}[`@SpringBootTest#properties`]
-annotation attribute on your tests.
+. `properties` attribute on your tests. Available on
+{dc-spring-boot-test}/context/SpringBootTest.{dc-ext}[`@SpringBootTest`] and the
+<<boot-features-testing-spring-boot-applications-testing-autoconfigured-tests,test
+annotations for testing a particular slice of your application>>.
 . Command line arguments.
 . Properties from `SPRING_APPLICATION_JSON` (inline JSON embedded in an environment
 variable or system property).
@@ -650,6 +652,21 @@ details.
 
 
 
+[[boot-features-encrypting-properties]]
+=== Encrypting Properties
+Spring Boot does not provide any built in support for encrypting property values, however,
+it does provide the hook points necessary to modify values contained in the Spring
+`Environment`. The `EnvironmentPostProcessor` interface allows you to manipulate the
+`Environment` before the application starts. See <<howto-customize-the-environment-or-application-context>>
+for details.
+
+If you're looking for a secure way to store credentials and passwords, the
+https://cloud.spring.io/spring-cloud-vault/[Spring Cloud Vault] project provides
+support for storing externalized configuration in
+https://www.vaultproject.io/[HashiCorp Vault].
+
+
+
 [[boot-features-external-config-yaml]]
 === Using YAML Instead of Properties
 http://yaml.org[YAML] is a superset of JSON and, as such, is a convenient format for
@@ -756,15 +773,25 @@ example:
 		address: 127.0.0.1
 	---
 	spring:
-		profiles: production
+		profiles: production & eu-central
 	server:
 		address: 192.168.1.120
 ----
 
 In the preceding example, if the `development` profile is active, the `server.address`
-property is `127.0.0.1`. Similarly, if the `production` profile is active, the
-`server.address` property is `192.168.1.120`. If the `development` and `production`
-profiles are *not* enabled, then the value for the property is `192.168.1.100`.
+property is `127.0.0.1`. Similarly, if the `production` *and* `eu-central` profiles are
+active, the `server.address` property is `192.168.1.120`. If the `development`,
+`production` and `eu-central` profiles are *not* enabled, then the value for the property
+is `192.168.1.100`.
+
+[NOTE]
+====
+`spring.profiles` can therefore contain a simple profile name (for example `production`)
+or a profile expression. A profile expression allows for more complicated profile logic
+to be expressed, for example `production & (eu-central | eu-west)`. Check the
+{spring-reference}core.html#beans-definition-profiles-java[reference guide] for more
+details.
+====
 
 If none are explicitly active when the application context starts, the default profiles
 are activated. So, in the following YAML, we set a value for `spring.security.user.password`
@@ -1278,7 +1305,7 @@ To specify a session timeout of 30 seconds, `30`, `PT30S` and `30s` are all equi
 read timeout of 500ms can be specified in any of the following form: `500`, `PT0.5S` and
 `500ms`.
 
-You can also use any of the supported unit. These are:
+You can also use any of the supported units. These are:
 
 * `ns` for nanoseconds
 * `us` for microseconds
@@ -1295,6 +1322,45 @@ TIP: If you are upgrading from a previous version that is simply using `Long` to
 the duration, make sure to define the unit (using `@DurationUnit`) if it isn't
 milliseconds alongside the switch to `Duration`. Doing so gives a transparent upgrade path
 while supporting a much richer format.
+
+
+
+[[boot-features-external-config-conversion-datasize]]
+===== Converting Data Sizes
+Spring Framework has a `DataSize` value type that allows to express size in bytes. If you
+expose a `DataSize` property, the following formats in application properties are
+available:
+
+* A regular `long` representation (using bytes as the default unit unless a
+`@DataSizeUnit` has been specified)
+* A more readable format where the value and the unit are coupled (e.g. `10MB` means 10
+megabytes)
+
+Consider the following example:
+
+[source,java,indent=0]
+----
+include::{code-examples}/context/properties/bind/AppIoProperties.java[tag=example]
+----
+
+To specify a buffer size of 10 megabytes, `10` and `10MB` are equivalent. A size threshold
+of 256 bytes can be specified as `256` or `256B`.
+
+You can also use any of the supported units. These are:
+
+* `B` for bytes
+* `KB` for kilobytes
+* `MB` for megabytes
+* `GB` for gigabytes
+* `TB` for terabytes
+
+The default unit is bytes and can be overridden using `@DataSizeUnit` as illustrated
+in the sample above.
+
+TIP: If you are upgrading from a previous version that is simply using `Long` to express
+the size, make sure to define the unit (using `@DataSizeUnit`) if it isn't bytes alongside
+the switch to `DataSize`. Doing so gives a transparent upgrade path while supporting a
+much richer format.
 
 
 
@@ -1680,6 +1746,46 @@ The following example shows potential logging settings in `application.propertie
 
 
 
+[[boot-features-custom-log-groups]]
+=== Log Groups
+It's often useful to be able to group related loggers together so that they can all be
+configured at the same time. For example, you might commonly change the logging levels for
+_all_ Tomcat related loggers, but you can't easily remember top level packages.
+
+To help with this, Spring Boot allows you to define logging groups in your Spring
+`Environment`. For example, here's how you could define a "`tomcat`" group by adding
+it to your `application.properties`:
+
+[source,properties,indent=0,subs="verbatim,quotes,attributes"]
+----
+	logging.group.tomcat=org.apache.catalina, org.apache.coyote, org.apache.tomcat
+----
+
+Once defined, you can change the level for all the loggers in the group with a single
+line:
+
+[source,properties,indent=0,subs="verbatim,quotes,attributes"]
+----
+	logging.level.tomcat=TRACE
+----
+
+Spring Boot includes the following pre-defined logging groups that can be used
+out-of-the-box:
+
+[cols="1,4"]
+|===
+|Name |Loggers
+
+|web
+|`org.springframework.core.codec`, `org.springframework.http`, `org.springframework.web`
+
+|sql
+|`org.springframework.jdbc.core`, `org.hibernate.SQL`
+
+|===
+
+
+
 [[boot-features-custom-log-configuration]]
 === Custom Log Configuration
 The various logging systems can be activated by including the appropriate libraries on
@@ -1829,8 +1935,12 @@ ERROR in ch.qos.logback.core.joran.spi.Interpreter@4:71 - no applicable action f
 The `<springProfile>` tag lets you optionally include or exclude sections of
 configuration based on the active Spring profiles. Profile sections are supported
 anywhere within the `<configuration>` element. Use the `name` attribute to specify which
-profile accepts the configuration. Multiple profiles can be specified with a
-comma-separated list. The following listing shows three sample profiles:
+profile accepts the configuration. The `<springProfile>` tag can contain a simple profile
+name (for example `staging`) or a profile expression. A profile expression allows for more
+complicated profile logic to be expressed, for example
+`production & (eu-central | eu-west)`. Check the
+{spring-reference}core.html#beans-definition-profiles-java[reference guide] for more
+details. The following listing shows three sample profiles:
 
 [source,xml,indent=0]
 ----
@@ -1838,7 +1948,7 @@ comma-separated list. The following listing shows three sample profiles:
 		<!-- configuration to be enabled when the "staging" profile is active -->
 	</springProfile>
 
-	<springProfile name="dev, staging">
+	<springProfile name="dev | staging">
 		<!-- configuration to be enabled when the "dev" or "staging" profiles are active -->
 	</springProfile>
 
@@ -1872,6 +1982,45 @@ to expose properties for use within Logback:
 
 NOTE: The `source` must be specified in kebab case (such as `my.property-name`).
 However, properties can be added to the `Environment` by using the relaxed rules.
+
+
+
+[[boot-features-json]]
+== JSON
+Spring Boot provides integration with three JSON mapping libraries:
+
+- Gson
+- Jackson
+- JSON-B
+
+Jackson is the preferred and default library.
+
+
+
+[[boot-features-json-jackson]]
+=== Jackson
+Auto-configuration for Jackson is provided and Jackson is part of
+`spring-boot-starer-json`. When Jackson is on the classpath an `ObjectMapper`
+bean is automatically configured. Several configuration properties are provided for
+<<howto.adoc#howto-customize-the-jackson-objectmapper,customizing the configuration of the
+`ObjectMapper`>>.
+
+
+
+[[boot-features-json-gson]]
+=== Gson
+Auto-configuration for Gson is provided. When Gson is on the classpath a `Gson` bean is
+automatically configured.  Several `+spring.gson.*+` configuration properties are
+provided for customizing the configuration. To take more control, one or more
+`GsonBuilderCustomizer` beans can be used.
+
+
+
+[[boot-features-json-json-b]]
+=== JSON-B
+Auto-configuration for JSON-B is provided. When the JSON-B API and an implementation are
+on the classpath a `Jsonb` bean will be automatically configured. The preferred JSON-B
+implementation is Apache Johnzon for which dependency management is provided.
 
 
 
@@ -2782,13 +2931,13 @@ does so, the orders shown in the following table will be used:
 [[boot-features-jersey]]
 === JAX-RS and Jersey
 If you prefer the JAX-RS programming model for REST endpoints, you can use one of the
-available implementations instead of Spring MVC. https://jersey.github.io/[Jersey] 1.x and
-http://cxf.apache.org/[Apache CXF] work quite well out of the box if you register their
-`Servlet` or `Filter` as a `@Bean` in your application context. Jersey 2.x has some native
-Spring support, so we also provide auto-configuration support for it in Spring Boot,
-together with a starter.
+available implementations instead of Spring MVC. https://jersey.github.io/[Jersey] and
+http://cxf.apache.org/[Apache CXF] work quite well out of the box. CXF requires you to
+register its `Servlet` or `Filter` as a `@Bean` in your application context. Jersey has
+some native Spring support, so we also provide auto-configuration support for it in
+Spring Boot, together with a starter.
 
-To get started with Jersey 2.x, include the `spring-boot-starter-jersey` as a dependency
+To get started with Jersey, include the `spring-boot-starter-jersey` as a dependency
 and then you need one `@Bean` of type `ResourceConfig` in which you register all the
 endpoints, as shown in the following example:
 
@@ -2847,12 +2996,7 @@ the filter registrations can be given init parameters by using `spring.jersey.in
 specify a map of properties.
 
 There is a {github-code}/spring-boot-samples/spring-boot-sample-jersey[Jersey sample] so
-that you can see how to set things up. There is also a
-{github-code}/spring-boot-samples/spring-boot-sample-jersey1[Jersey 1.x sample]. Note
-that, in the Jersey 1.x sample, the spring-boot maven plugin has been configured to
-unpack some Jersey jars so that they can be scanned by the JAX-RS implementation (because
-the sample asks for them to be scanned in its `Filter` registration). If any of your
-JAX-RS resources are packaged as nested jars, you may need to do the same.
+that you can see how to set things up.
 
 
 
@@ -2919,7 +3063,7 @@ If a specific order is required, you should avoid configuring a Filter that read
 request body at `Ordered.HIGHEST_PRECEDENCE`, since it might go against the character
 encoding configuration of your application. If a Servlet filter wraps the request, it
 should be configured with an order that is less than or equal to
-`FilterRegistrationBean.REQUEST_WRAPPER_FILTER_MAX_ORDER`.
+`OrderedFilter.REQUEST_WRAPPER_FILTER_MAX_ORDER`.
 
 
 
@@ -3067,6 +3211,35 @@ instead.
 There is a {github-code}/spring-boot-samples/spring-boot-sample-web-jsp[JSP sample] so
 that you can see how to set things up.
 
+[[boot-features-reactive-server]]
+=== Embedded Reactive Server Support
+
+Spring Boot includes support for the following embedded reactive web servers:
+Reactor Netty, Tomcat, Jetty, and Undertow. Most developers use the appropriate “Starter”
+to obtain a fully configured instance. By default, the embedded server listens for HTTP
+requests on port 8080.
+
+[[boot-features-reactive-server-resources]]
+=== Reactive Server Resources Configuration
+
+When auto-configuring a Reactor Netty or Jetty server, Spring Boot will create specific
+beans that will provide HTTP resources to the server instance: `ReactorResourceFactory`
+or `JettyResourceFactory`.
+
+By default, those resources will be also shared with the Reactor Netty and Jetty clients
+for optimal performances, given:
+
+* the same technology is used for server and client
+* the client instance is built using the `WebClient.Builder` bean auto-configured by
+Spring Boot
+
+Developers can override the resource configuration for Jetty and Reactor Netty by providing
+a custom `ReactorResourceFactory` or `JettyResourceFactory` bean - this will be applied to
+both clients and servers.
+
+You can learn more about the resource configuration on the client side in the
+<<boot-features-webclient-runtime, WebClient Runtime section>>.
+
 
 
 [[boot-features-security]]
@@ -3169,11 +3342,12 @@ https://oauth.net/2/[OAuth2] is a widely used authorization framework that is su
 Spring.
 
 
+
 [[boot-features-security-oauth2-client]]
 ==== Client
 If you have `spring-security-oauth2-client` on your classpath, you can take advantage of
-some auto-configuration to make it easy to set up an OAuth2 Client. This configuration
-makes use of the properties under `OAuth2ClientProperties`.
+some auto-configuration to make it easy to set up an OAuth2/Open ID Connect clients. This configuration
+makes use of the properties under `OAuth2ClientProperties`. The same properties are applicable to both servlet and reactive applications.
 
 You can register multiple OAuth2 clients and providers under the
 `spring.security.oauth2.client` prefix, as shown in the following example:
@@ -3201,14 +3375,30 @@ You can register multiple OAuth2 clients and providers under the
 	spring.security.oauth2.client.provider.my-oauth-provider.authorization-uri=http://my-auth-server/oauth/authorize
 	spring.security.oauth2.client.provider.my-oauth-provider.token-uri=http://my-auth-server/oauth/token
 	spring.security.oauth2.client.provider.my-oauth-provider.user-info-uri=http://my-auth-server/userinfo
+	spring.security.oauth2.client.provider.my-oauth-provider.user-info-authentication-method=header
 	spring.security.oauth2.client.provider.my-oauth-provider.jwk-set-uri=http://my-auth-server/token_keys
 	spring.security.oauth2.client.provider.my-oauth-provider.user-name-attribute=name
 ----
 
+For OpenID Connect providers that support https://openid.net/specs/openid-connect-discovery-1_0.html[OpenID Connect discovery],
+the configuration can be further simplified. The provider needs to be configured with an `issuer-uri` which is the
+URI that the it asserts as its Issuer Identifier. For example, if the
+`issuer-uri` provided is "https://example.com", then an `OpenID Provider Configuration Request`
+will be made to "https://example.com/.well-known/openid-configuration". The result is expected
+to be an `OpenID Provider Configuration Response`. The following example shows how an OpenID Connect
+Provider can be configured with the `issuer-uri`:
+
+[source,properties,indent=0]
+----
+	spring.security.oauth2.client.provider.oidc-provider.issuer-uri=https://dev-123456.oktapreview.com/oauth2/default/
+----
+
+
+
 By default, Spring Security's `OAuth2LoginAuthenticationFilter` only processes URLs
-matching `/login/oauth2/code/*`. If you want to customize the `redirect-uri-template` to
+matching `/login/oauth2/code/*`. If you want to customize the `redirect-uri` to
 use a different pattern, you need to provide configuration to process that custom pattern.
-For example, you can add your own `WebSecurityConfigurerAdapter` that resembles the
+For example, for servlet applications, you can add your own `WebSecurityConfigurerAdapter` that resembles the
 following:
 
 [source,java,indent=0]
@@ -3228,12 +3418,16 @@ public class OAuth2LoginSecurityConfig extends WebSecurityConfigurerAdapter {
 }
 ----
 
+
+
+[[boot-features-security-oauth2-common-providers]]
+===== OAuth2 client registration for common providers
 For common OAuth2 and OpenID providers, including Google, Github, Facebook, and Okta,
 we provide a set of provider defaults (`google`, `github`, `facebook`, and `okta`,
 respectively).
 
 If you do not need to customize these providers, you can set the `provider` attribute to
-the one for which you need to infer defaults. Also, if the ID of your client matches the
+the one for which you need to infer defaults. Also, if the key for the client registration matches a
 default supported provider, Spring Boot infers that as well.
 
 In other words, the two configurations in the following example use the Google provider:
@@ -3251,12 +3445,34 @@ In other words, the two configurations in the following example use the Google p
 
 
 [[boot-features-security-oauth2-server]]
-==== Server
+==== Resource Server
+If you have `spring-security-oauth2-resource-server` on your classpath, Spring Boot can
+set up an OAuth2 Resource Server as long as a JWK Set URI or OIDC Issuer URI is specified,
+as shown in the following examples:
+
+[source,properties,indent=0]
+----
+	spring.security.oauth2.resourceserver.jwt.jwk-set-uri=https://example.com/oauth2/default/v1/keys
+----
+
+[source,properties,indent=0]
+----
+	spring.security.oauth2.resourceserver.jwt.issuer-uri=https://dev-123456.oktapreview.com/oauth2/default/
+----
+
+The same properties are applicable for both servlet and reactive applications.
+
+Alternatively, you can define your own `JwtDecoder` bean for servlet applications
+or a `ReactiveJwtDecoder` for reactive applications.
+
+
+
+==== Authorization Server
 Currently, Spring Security does not provide support for implementing an OAuth 2.0
-Authorization Server or Resource Server. However, this functionality is available from
+Authorization Server. However, this functionality is available from
 the https://projects.spring.io/spring-security-oauth/[Spring Security OAuth] project,
 which will eventually be superseded by Spring Security completely. Until then, you can
-use the `spring-security-oauth2-autoconfigure` module to easily set up an OAuth 2.0 server;
+use the `spring-security-oauth2-autoconfigure` module to easily set up an OAuth 2.0 authorization server;
 see its https://docs.spring.io/spring-security-oauth2-boot[documentation] for instructions.
 
 
@@ -3268,9 +3484,9 @@ default. The `management.endpoints.web.exposure.include` property can be used to
 the actuators.
 
 If Spring Security is on the classpath and no other WebSecurityConfigurerAdapter is
-present, the actuators are secured by Spring Boot auto-config. If you define a custom
-`WebSecurityConfigurerAdapter`, Spring Boot auto-config will back off and you will be in
-full control of actuator access rules.
+present, all actuators other than `/health` and `/info` are secured by Spring Boot
+auto-configuration. If you define a custom `WebSecurityConfigurerAdapter`, Spring Boot
+auto-configuration will back off and you will be in full control of actuator access rules.
 
 NOTE: Before setting the `management.endpoints.web.exposure.include`, ensure that the
 exposed actuators do not contain sensitive information and/or are secured by placing them
@@ -3499,7 +3715,7 @@ scenes. If more than one `JdbcTemplate` is defined and no primary candidate exis
 
 
 [[boot-features-jpa-and-spring-data]]
-=== JPA and "`Spring Data`"
+=== JPA and Spring Data JPA
 The Java Persistence API is a standard technology that lets you "`map`" objects to
 relational databases. The `spring-boot-starter-data-jpa` POM provides a quick way to get
 started. It provides the following key dependencies:
@@ -3554,7 +3770,7 @@ considered. A typical entity class resembles the following example:
 
 		public City(String name, String state) {
 			this.name = name;
-			this.country = country;
+			this.state = state;
 		}
 
 		public String getName() {
@@ -3606,10 +3822,16 @@ The following example shows a typical Spring Data repository interface definitio
 
 		Page<City> findAll(Pageable pageable);
 
-		City findByNameAndCountryAllIgnoringCase(String name, String country);
+		City findByNameAndStateAllIgnoringCase(String name, String state);
 
 	}
 ----
+
+Spring Data JPA repositories support three different modes of bootstrapping: default,
+deferred, and lazy. To enable deferred or lazy bootstrapping, set the
+`spring.data.jpa.repositories.bootstrap-mode` to `deferred` or `lazy` respectively. When
+using deferred or lazy bootstrapping, the auto-configured `EntityManagerFactoryBuilder`
+will use the context's async task executor, if any, as the bootstrap executor.
 
 TIP: We have barely scratched the surface of Spring Data JPA. For complete details, see
 the https://docs.spring.io/spring-data/jpa/docs/current/reference/html/[Spring Data JPA
@@ -3657,6 +3879,23 @@ If you are running a web application, Spring Boot by default registers
 to apply the "`Open EntityManager in View`" pattern, to allow for lazy loading in web
 views. If you do not want this behavior, you should set `spring.jpa.open-in-view` to
 `false` in your `application.properties`.
+
+
+
+[[boot-features-data-jdbc]]
+=== Spring Data JDBC
+Spring Data includes repository support for JDBC and will automatically generate SQL for
+the methods on `CrudRepository`. For more advanced queries, a `@Query` annotation is
+provided.
+
+Spring Boot will auto-configure Spring Data's JDBC repositories when the necessary
+dependencies are on the classpath. They can be added to your project with a single
+dependency on `spring-boot-starter-data-jdbc`. If necessary, you can take control of
+Spring Data JDBC's configuration by adding the `@EnableJdbcRepositories` annotation or a
+`JdbcConfiguration` subclass to your application.
+
+TIP: For complete details of Spring Data JDBC, please refer to the
+https://projects.spring.io/spring-data-jdbc/[reference documentation].
 
 
 
@@ -3788,6 +4027,7 @@ which is used when the jOOQ `Configuration` is created. You can define beans for
 following jOOQ Types:
 
 * `ConnectionProvider`
+* `ExecutorProvider`
 * `TransactionProvider`
 * `RecordMapperProvider`
 * `RecordUnmapperProvider`
@@ -3934,6 +4174,10 @@ example, you might declare the following settings in your `application.propertie
 	spring.data.mongodb.port=27017
 ----
 
+If you have defined your own `MongoClient`, it will be used to auto-configure a suitable
+`MongoDbFactory`. Both `com.mongodb.MongoClient` and `com.mongodb.client.MongoClient`
+are supported.
+
 NOTE: If you use the Mongo 3.0 Java driver, `spring.data.mongodb.host` and
 `spring.data.mongodb.port` are not supported. In such cases, `spring.data.mongodb.uri`
 should be used to provide all of the configuration.
@@ -4006,7 +4250,7 @@ in the following example:
 
 		Page<City> findAll(Pageable pageable);
 
-		City findByNameAndCountryAllIgnoringCase(String name, String country);
+		City findByNameAndStateAllIgnoringCase(String name, String state);
 
 	}
 ----
@@ -4045,29 +4289,30 @@ the Mongo instance's configuration and logging routing.
 [[boot-features-neo4j]]
 === Neo4j
 http://neo4j.com/[Neo4j] is an open-source NoSQL graph database that uses a rich data
-model of nodes related by first class relationships, which is better suited for connected
-big data than traditional rdbms approaches. Spring Boot offers several conveniences for
-working with Neo4j, including the `spring-boot-starter-data-neo4j` "`Starter`".
+model of nodes connected by first class relationships, which is better suited for
+connected big data than traditional RDBMS approaches. Spring Boot offers several
+conveniences for working with Neo4j, including the `spring-boot-starter-data-neo4j`
+"`Starter`".
 
 
 
 [[boot-features-connecting-to-neo4j]]
 ==== Connecting to a Neo4j Database
-You can inject an auto-configured `Neo4jSession`, `Session`, or `Neo4jOperations`
-instance as you would any other Spring Bean. By default, the instance tries to connect to
-a Neo4j server at `localhost:7474`. The following example shows how to inject a Neo4j
-bean:
+To access a Neo4j server, you can inject an auto-configured
+`org.neo4j.ogm.session.Session`. By default, the instance tries to connect to a Neo4j
+server at `localhost:7687` using the Bolt protocol. The following example shows how to
+inject a Neo4j `Session`:
 
 [source,java,indent=0]
 ----
 	@Component
 	public class MyBean {
 
-		private final Neo4jTemplate neo4jTemplate;
+		private final Session session;
 
 		@Autowired
-		public MyBean(Neo4jTemplate neo4jTemplate) {
-			this.neo4jTemplate = neo4jTemplate;
+		public MyBean(Session session) {
+			this.session = session;
 		}
 
 		// ...
@@ -4075,48 +4320,54 @@ bean:
 	}
 ----
 
-You can take full control of the configuration by adding a
-`org.neo4j.ogm.config.Configuration` `@Bean` of your own. Also, adding a `@Bean` of type
-`Neo4jOperations` disables the auto-configuration.
-
-You can configure the user and credentials to use by setting the `spring.data.neo4j.*`
+You can configure the uri and credentials to use by setting the `spring.data.neo4j.*`
 properties, as shown in the following example:
 
 [source,properties,indent=0]
 ----
-	spring.data.neo4j.uri=http://my-server:7474
+	spring.data.neo4j.uri=bolt://my-server:7687
 	spring.data.neo4j.username=neo4j
 	spring.data.neo4j.password=secret
 ----
+
+You can take full control over the session creation by adding a
+`org.neo4j.ogm.config.Configuration` `@Bean`. Also, adding a `@Bean` of type
+`SessionFactory` disables the auto-configuration and gives you full control.
 
 
 
 [[boot-features-connecting-to-neo4j-embedded]]
 ==== Using the Embedded Mode
-
 If you add `org.neo4j:neo4j-ogm-embedded-driver` to the dependencies of your application,
 Spring Boot automatically configures an in-process embedded instance of Neo4j that does
-not persist any data when your application shuts down. You can explicitly disable that
-mode by setting `spring.data.neo4j.embedded.enabled=false`. You can also enable
-persistence for the embedded mode by providing a path to a database file, as shown in the
-following example:
-
-----
-	spring.data.neo4j.uri=file://var/tmp/graph.db
-----
+not persist any data when your application shuts down.
 
 [NOTE]
 ====
-The Neo4j OGM embedded driver does not provide the Neo4j kernel. Users are expected to
-provide this dependency manually. See
-http://neo4j.com/docs/ogm-manual/current/reference/#reference:getting-started[the
-documentation] for more details.
+As the embedded Neo4j OGM  driver  does not provide the Neo4j kernel itself, you have
+to declare `org.neo4j:neo4j` as dependency yourself. Refer to
+https://neo4j.com/docs/ogm-manual/current/reference/#reference:getting-started[the
+Neo4j OGM documentation] for a list of compatible versions.
 ====
+
+The embedded driver takes precedence over the other drivers when there are multiple
+drivers on the classpath. You can explicitly disable the embedded mode by setting
+`spring.data.neo4j.embedded.enabled=false`.
+
+<<boot-features-testing-spring-boot-applications-testing-autoconfigured-neo4j-test,Data Neo4j Tests>>
+automatically make use of an embedded Neo4j instance if the embedded driver and Neo4j
+kernel are on the classpath as described above.
+
+[NOTE]
+====
+You can enable persistence for the embedded mode by providing a path to a database file
+in your configuration, e.g. `spring.data.neo4j.uri=file://var/tmp/graph.db`.
+====
+
 
 
 [[boot-features-neo4j-ogm-session]]
 ==== Neo4jSession
-
 By default, if you are running a web application, the session is bound to the thread for
 the entire processing of the request (that is, it uses the "Open Session in View"
 pattern). If you do not want this behavior, add the following line to your
@@ -4133,42 +4384,32 @@ pattern). If you do not want this behavior, add the following line to your
 ==== Spring Data Neo4j Repositories
 Spring Data includes repository support for Neo4j.
 
-In fact, both Spring Data JPA and Spring Data Neo4j share the same common infrastructure.
-You could take the JPA example from earlier and, assuming that `City` is now a Neo4j OGM
-`@NodeEntity` rather than a JPA `@Entity`, it works in the same way.
-
-TIP: You can customize entity scanning locations by using the `@EntityScan` annotation.
-
-To enable repository support (and optionally support for `@Transactional`), add the
-following two annotations to your Spring configuration:
-
-[source,java,indent=0]
-----
-	@EnableNeo4jRepositories(basePackages = "com.example.myapp.repository")
-	@EnableTransactionManagement
-----
-
-==== Repository Example
-
-The following example shows an interface definition for a Neo4j repository:
+Spring Data Neo4j shares the common infrastructure with Spring Data JPA as many other
+Spring Data modules do. You could take the JPA example from earlier and define
+`City` as Neo4j OGM `@NodeEntity` rather than JPA `@Entity` and the repository
+abstraction works in the same way, as shown in the following example:
 
 [source,java,indent=0]
 ----
 	package com.example.myapp.domain;
 
-	import org.springframework.data.domain.*;
-	import org.springframework.data.repository.*;
+	import java.util.Optional;
 
-	public interface CityRepository extends GraphRepository<City> {
+	import org.springframework.data.neo4j.repository.*;
 
-		Page<City> findAll(Pageable pageable);
+	public interface CityRepository extends Neo4jRepository<City, Long> {
 
-		City findByNameAndCountry(String name, String country);
+		Optional<City> findOneByNameAndState(String name, String state);
 
 	}
 ----
 
-TIP: For complete details of Spring Data Neo4j, including its rich object mapping
+The `spring-boot-starter-data-neo4j` "`Starter`" enables the repository support as well
+as transaction management. You can customize the locations to look for repositories and
+entities by using `@EnableNeo4jRepositories` and `@EntityScan` respectively on a
+`@Configuration`-bean.
+
+TIP: For complete details of Spring Data Neo4j, including its object mapping
 technologies, refer to the https://projects.spring.io/spring-data-neo4j/[reference
 documentation].
 
@@ -4239,14 +4480,45 @@ https://projects.spring.io/spring-data-solr/[reference documentation].
 
 [[boot-features-elasticsearch]]
 === Elasticsearch
-http://www.elasticsearch.org/[Elasticsearch] is an open source, distributed, real-time
-search and analytics engine. Spring Boot offers basic auto-configuration for
-Elasticsearch and the abstractions on top of it provided by
-https://github.com/spring-projects/spring-data-elasticsearch[Spring Data Elasticsearch].
-There is a `spring-boot-starter-data-elasticsearch` "`Starter`" for collecting the
-dependencies in a convenient way. Spring Boot also supports
-https://github.com/searchbox-io/Jest[Jest].
+https://www.elastic.co/products/elasticsearch[Elasticsearch] is an open source,
+distributed, RESTful search and analytics engine. Spring Boot offers basic
+auto-configuration for Elasticsearch.
 
+Spring Boot supports several HTTP clients:
+
+* The official Java "Low Level" and "High Level" REST clients
+* https://github.com/searchbox-io/Jest[Jest]
+
+The transport client is still being used by
+https://github.com/spring-projects/spring-data-elasticsearch[Spring Data Elasticsearch],
+which you can start using with the `spring-boot-starter-data-elasticsearch` "`Starter`".
+
+
+[[boot-features-connecting-to-elasticsearch-rest]]
+==== Connecting to Elasticsearch by REST clients
+Elasticsearch ships
+https://www.elastic.co/guide/en/elasticsearch/client/java-rest/current/index.html[two different REST clients]
+that you can use to query a cluster: the "Low Level" client and the "High Level" client.
+
+If you have the `org.elasticsearch.client:elasticsearch-rest-client` dependency on the
+classpath, Spring Boot will auto-configure and register a `RestClient` bean that
+by default targets `http://localhost:9200`.
+You can further tune how `RestClient` is configured, as shown in the following example:
+
+[source,properties,indent=0]
+----
+	spring.elasticsearch.rest.uris=http://search.example.com:9200
+	spring.elasticsearch.rest.username=user
+	spring.elasticsearch.rest.password=secret
+----
+
+You can also register an arbitrary number of beans that implement
+`RestClientBuilderCustomizer` for more advanced customizations.
+To take full control over the registration, define a `RestClient` bean.
+
+If you have the `org.elasticsearch.client:elasticsearch-rest-high-level-client` dependency
+on the classpath, Spring Boot will auto-configure a `RestHighLevelClient`, which wraps
+any existing `RestClient` bean, reusing its HTTP configuration.
 
 
 [[boot-features-connecting-to-elasticsearch-jest]]
@@ -4349,6 +4621,9 @@ used to customize the connection. Generally, you provide `keyspace-name` and
 	spring.data.cassandra.keyspace-name=mykeyspace
 	spring.data.cassandra.contact-points=cassandrahost1,cassandrahost2
 ----
+
+You can also register an arbitrary number of beans that implement
+`ClusterBuilderCustomizer` for more advanced customizations.
 
 The following code listing shows how to inject a Cassandra bean:
 
@@ -4526,6 +4801,11 @@ URLs of your server in your application.properties, as shown in the following ex
 If you need to customize connection settings, you can use the `spring.ldap.base` and
 `spring.ldap.base-environment` properties.
 
+An `LdapContextSource` is auto-configured based on these settings. If you need to customize
+it, for instance to use a `PooledContextSource`, you can still inject the auto-configured
+`LdapContextSource`. Make sure to flag your customized `ContextSource` as `@Primary` so
+that the auto-configured `LdapTemplate` uses it.
+
 
 
 [[boot-features-ldap-spring-data-repositories]]
@@ -4632,7 +4912,7 @@ If the connection to InfluxDB requires a user and password, you can set the
 `spring.influx.user` and `spring.influx.password` properties accordingly.
 
 InfluxDB relies on OkHttp. If you need to tune the http client `InfluxDB` uses behind the
-scenes, you can register an `OkHttpClient.Builder` bean.
+scenes, you can register an `InfluxDbOkHttpClientBuilderProvider` bean.
 
 
 
@@ -5039,17 +5319,24 @@ ActiveMQ configuration is controlled by external configuration properties in
 	spring.activemq.password=secret
 ----
 
-You can also pool JMS resources by adding a dependency to
-`org.apache.activemq:activemq-pool` and configuring the `PooledConnectionFactory`
-accordingly, as shown in the following example:
+By default, a `CachingConnectionFactory` wraps the native `ConnectionFactory` with
+sensible settings that you can control by external configuration properties in
+`+spring.jms.*+`:
+
+[source,properties,indent=0]
+----
+	spring.jms.cache.session-cache-size=5
+----
+
+If you'd rather use native pooling, you can do so by adding a dependency to
+`org.messaginghub:pooled-jms` and configuring the `JmsPoolConnectionFactory` accordingly,
+as shown in the following example:
 
 [source,properties,indent=0]
 ----
 	spring.activemq.pool.enabled=true
 	spring.activemq.pool.max-connections=50
 ----
-
-WARNING: `PooledConnectionFactory` is not JMS 2.0 compliant
 
 TIP: See
 {sc-spring-boot-autoconfigure}/jms/activemq/ActiveMQProperties.{sc-ext}[`ActiveMQProperties`]
@@ -5097,6 +5384,25 @@ list to create them with the default options, or you can define bean(s) of type
 `org.apache.activemq.artemis.jms.server.config.JMSQueueConfiguration` or
 `org.apache.activemq.artemis.jms.server.config.TopicConfiguration`, for advanced queue
 and topic configurations, respectively.
+
+By default, a `CachingConnectionFactory` wraps the native `ConnectionFactory` with
+sensible settings that you can control by external configuration properties in
+`+spring.jms.*+`:
+
+[source,properties,indent=0]
+----
+	spring.jms.cache.session-cache-size=5
+----
+
+If you'd rather use native pooling, you can do so by adding a dependency to
+`org.messaginghub:pooled-jms` and configuring the `JmsPoolConnectionFactory` accordingly,
+as shown in the following example:
+
+[source,properties,indent=0]
+----
+	spring.artemis.pool.enabled=true
+	spring.artemis.pool.max-connections=50
+----
 
 See
 {sc-spring-boot-autoconfigure}/jms/artemis/ArtemisProperties.{sc-ext}[`ArtemisProperties`]
@@ -5308,7 +5614,16 @@ If necessary, any `org.springframework.amqp.core.Queue` that is defined as a bea
 automatically used to declare a corresponding queue on the RabbitMQ instance.
 
 To retry operations, you can enable retries on the `AmqpTemplate` (for example, in the
-event that the broker connection is lost). Retries are disabled by default.
+event that the broker connection is lost):
+
+[source,properties,indent=0]
+----
+	spring.rabbitmq.template.retry.enabled=true
+	spring.rabbitmq.template.retry.initial-interval=2s
+----
+
+Retries are disabled by default. You can also customize the `RetryTemplate`
+programmatically by declaring a `RabbitRetryTemplateCustomizer` bean.
 
 
 
@@ -5390,7 +5705,8 @@ You can enable retries to handle situations where your listener throws an except
 default, `RejectAndDontRequeueRecoverer` is used, but you can define a `MessageRecoverer`
 of your own. When retries are exhausted, the message is rejected and either dropped or
 routed to a dead-letter exchange if the broker is configured to do so. By default,
-retries are disabled.
+retries are disabled. You can also customize the `RetryTemplate` programmatically by
+declaring a `RabbitRetryTemplateCustomizer` bean.
 
 IMPORTANT: By default, if retries are disabled and the listener throws an exception, the
 delivery is retried indefinitely. You can modify this behavior in two ways: Set the
@@ -5456,8 +5772,7 @@ bean is defined, it is automatically associated to the auto-configured `KafkaTem
 When the Apache Kafka infrastructure is present, any bean can be annotated with
 `@KafkaListener` to create a listener endpoint. If no `KafkaListenerContainerFactory` has
 been defined, a default one is automatically configured with keys defined in
-`spring.kafka.listener.*`. Also, if a `RecordMessageConverter` bean is defined, it is
-automatically associated to the default factory.
+`spring.kafka.listener.*`.
 
 The following component creates a listener endpoint on the `someTopic` topic:
 
@@ -5474,6 +5789,44 @@ The following component creates a listener endpoint on the `someTopic` topic:
 	}
 ----
 
+If a `KafkaTransactionManager` bean is defined, it is automatically associated to the
+container factory. Similarly, if a `RecordMessageConverter`, `ErrorHandler` or
+`AfterRollbackProcessor` bean is defined, it is automatically associated to the default
+factory.
+
+TIP: A custom `ChainedKafkaTransactionManager` must be marked `@Primary` as it usually
+references the auto-configured `KafkaTransactionManager` bean.
+
+
+
+[[boot-features-kafka-streams]]
+==== Kafka Streams
+Spring for Apache Kafka provides a factory bean to create a `StreamsBuilder` object and
+manage the lifecycle of its streams. Spring Boot auto-configures the required
+`KafkaStreamsConfiguration` bean as long as `kafka-streams` is on the classpath and Kafka
+Streams is enabled via the `@EnableKafkaStreams` annotation.
+
+Enabling Kafka Streams means that the application id and bootstrap servers must be set.
+The former can be configured using `spring.kafka.streams.application-id`, defaulting to
+`spring.application.name` if not set. The latter can be set globally or
+specifically overridden just for streams.
+
+Several additional properties are available using dedicated properties; other arbitrary
+Kafka properties can be set using the `spring.kafka.streams.properties` namespace. See
+also <<boot-features-kafka-extra-props>> for more information.
+
+To use the factory bean, simply wire `StreamsBuilder` into your `@Bean` as shown in the
+following example:
+
+[source,java,indent=0]
+----
+include::{code-examples}/kafka/KafkaStreamsBeanExample.java[tag=configuration]
+----
+
+By default, the streams managed by the `StreamBuilder` object it creates are started
+automatically. You can customize this behaviour using the
+`spring.kafka.streams.auto-startup` property.
+
 
 
 [[boot-features-kafka-extra-props]]
@@ -5483,13 +5836,14 @@ The properties supported by auto configuration are shown in
 (hyphenated or camelCase) map directly to the Apache Kafka dotted properties. Refer to the
 Apache Kafka documentation for details.
 
-The first few of these properties apply to both producers and consumers but can be
-specified at the producer or consumer level if you wish to use different values for each.
+The first few of these properties apply to all components (producers, consumers, admins,
+and streams) but can be
+specified at the component level if you wish to use different values.
 Apache Kafka designates properties with an importance of HIGH, MEDIUM, or LOW. Spring Boot
 auto-configuration supports all HIGH importance properties, some selected MEDIUM and LOW
 properties, and any properties that do not have a default value.
 
-Only a subset of the properties supported by Kafka are available through the
+Only a subset of the properties supported by Kafka are available directly through the
 `KafkaProperties` class. If you wish to configure the producer or consumer with additional
 properties that are not directly supported, use the following properties:
 
@@ -5499,11 +5853,13 @@ properties that are not directly supported, use the following properties:
 	spring.kafka.admin.properties.prop.two=second
 	spring.kafka.consumer.properties.prop.three=third
 	spring.kafka.producer.properties.prop.four=fourth
+	spring.kafka.streams.properties.prop.five=fifth
 ----
 
 This sets the common `prop.one` Kafka property to `first` (applies to producers,
 consumers and admins), the `prop.two` admin property to `second`, the `prop.three`
-consumer property to `third` and the `prop.four` producer property to `fourth`.
+consumer property to `third`, the `prop.four` producer property to `fourth` and the
+`prop.five` streams property to `fifth`.
 
 You can also configure the Spring Kafka `JsonDeserializer` as follows:
 
@@ -5594,13 +5950,14 @@ Finally, the most extreme (and rarely used) option is to create your own
 == Calling REST Services with `WebClient`
 If you have Spring WebFlux on your classpath, you can also choose to use `WebClient` to
 call remote REST services. Compared to `RestTemplate`, this client has a more functional
-feel and is fully reactive. You can create your own client instance with the builder,
-`WebClient.create()`. See the {spring-reference}web.html#web-reactive-client[relevant
-section on WebClient].
+feel and is fully reactive. You can learn more about the `WebClient` in the dedicated
+{spring-reference}web-reactive.html#webflux-client[section in the Spring Framework docs].
 
-Spring Boot creates and pre-configures such a builder for you. For example, client HTTP
-codecs are configured in the same fashion as the server ones (see
-<<boot-features-webflux-httpcodecs,WebFlux HTTP codecs auto-configuration>>).
+Spring Boot creates and pre-configures a `WebClient.Builder` for you; it is strongly
+advised to inject it in your components and use it to create `WebClient` instances.
+Spring Boot is configuring that builder to share HTTP resources, reflect codecs
+setup in the same fashion as the server ones (see
+<<boot-features-webflux-httpcodecs,WebFlux HTTP codecs auto-configuration>>), and more.
 
 The following code shows a typical example:
 
@@ -5616,12 +5973,38 @@ The following code shows a typical example:
 		}
 
 		public Mono<Details> someRestCall(String name) {
-			return this.webClient.get().url("/{name}/details", name)
+			return this.webClient.get().uri("/{name}/details", name)
 							.retrieve().bodyToMono(Details.class);
 		}
 
 	}
 ----
+
+
+
+[[boot-features-webclient-runtime]]
+=== WebClient Runtime
+Spring Boot will auto-detect which `ClientHttpConnector` to use to drive `WebClient`,
+depending on the libraries available on the application classpath. For now, Reactor
+Netty and Jetty RS client are supported.
+
+The `spring-boot-starter-webflux` starter depends on `io.projectreactor.netty:reactor-netty`
+by default, which brings both server and client implementations. If you choose to use Jetty
+as a reactive server instead, you should add a dependency on the Jetty Reactive HTTP
+client library, `org.eclipse.jetty:jetty-reactive-httpclient`. Using the same technology
+for server and client has it advantages, as it will automatically share HTTP resources
+between client and server.
+
+Developers can override the resource configuration for Jetty and Reactor Netty by providing
+a custom `ReactorResourceFactory` or `JettyResourceFactory` bean - this will be applied to
+both clients and servers.
+
+If you wish to override that choice for the client, you can define your own
+`ClientHttpConnector` bean and have full control over the client configuration.
+
+You can learn more about the
+{spring-reference}web-reactive.html#webflux-client-builder[`WebClient` configuration
+options in the Spring Framework reference documentation].
 
 
 
@@ -5776,31 +6159,6 @@ property with a different value for each instance of your application.
 
 
 
-[[boot-features-jta-narayana]]
-=== Using a Narayana Transaction Manager
-http://narayana.io/[Narayana] is a popular open source JTA transaction manager
-implementation supported by JBoss. You can use the `spring-boot-starter-jta-narayana`
-starter to add the appropriate Narayana dependencies to your project. As with Atomikos and
-Bitronix, Spring Boot automatically configures Narayana and post-processes your beans to
-ensure that startup and shutdown ordering is correct.
-
-By default, Narayana transaction logs are written to a `transaction-logs` directory in
-your application home directory (the directory in which your application jar file
-resides). You can customize the location of this directory by setting a
-`spring.jta.log-dir` property in your `application.properties` file. Properties starting
-with `spring.jta.narayana.properties` can also be used to customize the Narayana
-configuration. See the
-{dc-spring-boot}/jta/narayana/NarayanaProperties.{dc-ext}[`NarayanaProperties` Javadoc]
-for complete details.
-
-NOTE: To ensure that multiple transaction managers can safely coordinate the same
-resource managers, each Narayana instance must be configured with a unique ID. By
-default, this ID is set to `1`. To ensure uniqueness in production, you should configure
-the `spring.jta.transaction-manager-id` property with a different value for each instance
-of your application.
-
-
-
 [[boot-features-jta-javaee]]
 === Using a Java EE Managed Transaction Manager
 If you package your Spring Boot application as a `war` or `ear` file and deploy it to a
@@ -5943,9 +6301,19 @@ NOTE: By default, the database is detected and initialized by using the standard
 provided with the Quartz library. It is also possible to provide a custom script by
 setting the `spring.quartz.jdbc.schema` property.
 
-Quartz Scheduler configuration can be customized by using Quartz configuration properties
-()`spring.quartz.properties.*`) and `SchedulerFactoryBeanCustomizer` beans, which allow
-programmatic `SchedulerFactoryBean` customization.
+To have Quartz use a `DataSource` other than the application's main `DataSource`, declare
+a `DataSource` bean, annotating its `@Bean` method with `@QuartzDataSource`. Doing so
+ensures that the Quartz-specific `DataSource` is used by both the `SchedulerFactoryBean`
+and for schema initialization.
+
+By default, jobs created by configuration will not overwrite already registered jobs that
+have been read from a persistent job store. To enable overwriting existing job definitions
+set the `spring.quartz.overwrite-existing-jobs` property.
+
+Quartz Scheduler configuration can be customized using `spring.quartz` properties and
+`SchedulerFactoryBeanCustomizer` beans, which allow programmatic `SchedulerFactoryBean`
+customization. Advanced Quartz configuration properties can be customized using
+`spring.quartz.properties.*`.
 
 NOTE: In particular, an `Executor` bean is not associated with the scheduler as Quartz
 offers a way to configure the scheduler via `spring.quartz.properties`. If you need
@@ -5976,6 +6344,38 @@ in a similar manner, as shown in the following example:
 
 	}
 ----
+
+
+
+[[boot-features-task-execution-scheduling]]
+== Task Execution and Scheduling
+In the absence of a `TaskExecutor` bean in the context, Spring Boot auto-configures a
+`ThreadPoolTaskExecutor` with sensible defaults that can be automatically associated to
+asynchronous task execution (`@EnableAsync`) and Spring MVC asynchronous request
+processing.
+
+The thread pool uses 8 core threads that can grow and shrink according to the load. Those
+default settings can be fine-tuned using the `spring.task.execution` namespace as shown in
+the following example:
+
+[source,properties,indent=0]
+----
+	spring.task.execution.pool.max-threads=16
+	spring.task.execution.pool.queue-capacity=100
+	spring.task.execution.pool.keep-alive=10s
+----
+
+This changes the thread pool to use a bounded queue so that when the queue is full (100
+tasks), the thread pool increases to maximum 16 threads. Shrinking of the pool is more
+aggressive as threads are reclaimed when they are idle for 10 seconds (rather than
+60 seconds by default).
+
+A `ThreadPoolTaskScheduler` can also be auto-configured if need to be associated to
+scheduled task execution (`@EnableScheduling`). The thread pool uses one thread by default
+and those settings can be fine-tuned using the `spring.task.scheduling` namespace.
+
+Both a `TaskExecutorBuilder` bean and a `TaskSchedulerBuilder` bean are made available in the
+context if a custom executor or scheduler needs to be created.
 
 
 
@@ -6133,8 +6533,10 @@ Boot features. The annotation works by
 <<boot-features-testing-spring-boot-applications-testing-autoconfigured-tests,testing more
 specific slices>> of an application.
 
-TIP: Don't forget to also add `@RunWith(SpringRunner.class)` to your test, otherwise
-the annotations will be ignored.
+TIP: If you are using JUnit 4, don't forget to also add `@RunWith(SpringRunner.class)` to
+your test, otherwise the annotations will be ignored. If you are using JUnit 5, there's no
+need to add the equivalent `@ExtendWith(SpringExtension)` as `@SpringBootTest` and the
+other `@…Test` annotations are already annotated with it.
 
 By default, `@SpringBootTest` will not start a server. You can use the `webEnvironment`
 attribute of `@SpringBootTest` to further refine how your tests run:
@@ -6149,8 +6551,8 @@ web application.
 * `RANDOM_PORT`: Loads a `WebServerApplicationContext` and provides a real web
 environment. Embedded servers are started and listen on a random port.
 * `DEFINED_PORT`: Loads a `WebServerApplicationContext` and provides a real web
-environment. Embedded servers  are started and listen on a defined port (from your
-`application.properties` or on the default port of `8080`).
+environment. Embedded servers are started and listen on a defined port (from your
+`application.properties`) or on the default port of `8080`.
 * `NONE`: Loads an `ApplicationContext` by using `SpringApplication` but does not provide
 _any_ web environment (mock or otherwise).
 
@@ -6159,6 +6561,10 @@ test method by default. However, as using this arrangement with either `RANDOM_P
 `DEFINED_PORT` implicitly provides a real servlet environment, the HTTP client and server
 run in separate threads and, thus, in separate transactions. Any transaction initiated on
 the server does not roll back in this case.
+
+NOTE: `@SpringBootTest` with `webEnvironment = WebEnvironment.RANDOM_PORT` will also
+start the management server on a separate random port if your application uses a different
+port for the management server.
 
 
 
@@ -6395,6 +6801,11 @@ NOTE: While Spring's test framework caches application contexts between tests an
 a context for tests sharing the same configuration, the use of `@MockBean` or `@SpyBean`
 influences the cache key, which will most likely increase the number of contexts.
 
+TIP: If you are using `@SpyBean` to spy on a bean with `@Cacheable` methods that refer
+to parameters by name, your application must be compiled with `-parameters`. This
+ensures that the parameter names are available to the caching infrastructure once the
+bean has been spied upon.
+
 
 
 [[boot-features-testing-spring-boot-applications-testing-autoconfigured-tests]]
@@ -6596,6 +7007,15 @@ that the driver exits after each test and that a new instance is injected. If yo
 not want this behavior, you can add `@Scope("singleton")` to your `WebDriver` `@Bean`
 definition.
 
+WARNING: The `webDriver` scope created by Spring Boot will replace any user defined scope
+of the same name. If you define your own `webDriver` scope you may find it stops working
+when you use `@WebMvcTest`.
+
+If you have Spring Security on the classpath, `@WebMvcTest` will also scan `WebSecurityConfigurer`
+beans. Instead of disabling security completely for such tests, you can use Spring Security's test support.
+More details on how to use Spring Security's `MockMvc` support can be found in
+this _<<howto.adoc#howto-use-test-with-spring-security>>_ how-to section.
+
 TIP: Sometimes writing Spring MVC tests is not enough; Spring Boot can help you run
 <<boot-features-testing-spring-boot-applications-testing-with-running-server,
 full end-to-end tests with an actual server>>.
@@ -6768,8 +7188,9 @@ following example:
 [[boot-features-testing-spring-boot-applications-testing-autoconfigured-jdbc-test]]
 ==== Auto-configured JDBC Tests
 `@JdbcTest` is similar to `@DataJpaTest` but is for tests that only require a
-`DataSource`. By default, it configures an in-memory embedded database and a
-`JdbcTemplate`. Regular `@Component` beans are not loaded into the `ApplicationContext`.
+`DataSource` and do not use Spring Data JDBC. By default, it configures an in-memory
+embedded database and a `JdbcTemplate`. Regular `@Component` beans are not loaded into
+the `ApplicationContext`.
 
 TIP: A list of the auto-configurations that are enabled by `@JdbcTest` can be
 <<appendix-test-auto-configuration#test-auto-configuration,found in the appendix>>.
@@ -6796,6 +7217,29 @@ follows:
 
 	}
 ----
+
+If you prefer your test to run against a real database, you can use the
+`@AutoConfigureTestDatabase` annotation in the same way as for `DataJpaTest`. (See
+"<<boot-features-testing-spring-boot-applications-testing-autoconfigured-jpa-test>>".)
+
+
+
+[[boot-features-testing-spring-boot-applications-testing-autoconfigured-data-jdbc-test]]
+==== Auto-configured Data JDBC Tests
+`@DataJdbcTest` is similar to `@JdbcTest` but is for tests that use Spring Data JDBC
+repositories. By default, it configures an in-memory embedded database, a `JdbcTemplate`,
+and Spring Data JDBC repositories. Regular `@Component` beans are not loaded into
+the `ApplicationContext`.
+
+TIP: A list of the auto-configurations that are enabled by `@DataJdbcTest` can be
+<<appendix-test-auto-configuration#test-auto-configuration,found in the appendix>>.
+
+By default, Data JDBC tests are transactional and roll back at the end of each test. See
+the {spring-reference}testing.html#testcontext-tx-enabling-transactions[relevant section]
+in the Spring Framework Reference Documentation for more details. If that is not what you
+want, you can disable transaction management for a test or for the whole test class as
+<<boot-features-testing-spring-boot-applications-testing-autoconfigured-jdbc-test,shown
+in the JDBC example>>.
 
 If you prefer your test to run against a real database, you can use the
 `@AutoConfigureTestDatabase` annotation in the same way as for `DataJpaTest`. (See
@@ -7414,12 +7858,25 @@ include::{test-examples}/web/client/SampleWebClientTests.java[tag=test]
 
 [[boot-features-websockets]]
 == WebSockets
-Spring Boot provides WebSockets auto-configuration for embedded Tomcat 8.5, Jetty
-9, and Undertow. If you deploy a war file to a standalone container, Spring Boot assumes
-that the container is responsible for the configuration of its WebSocket support.
+Spring Boot provides WebSockets auto-configuration for embedded Tomcat, Jetty, and
+Undertow. If you deploy a war file to a standalone container, Spring Boot assumes that the
+container is responsible for the configuration of its WebSocket support.
 
 Spring Framework provides {spring-reference}web.html#websocket[rich WebSocket support]
-that can be easily accessed through the `spring-boot-starter-websocket` module.
+for MVC web applications that can be easily accessed through the
+`spring-boot-starter-websocket` module.
+
+WebSocket support is also available for
+{spring-reference}web-reactive.html#webflux-websocket[reactive web applications] and
+requires to include the WebSocket API alongside `spring-boot-starter-webflux`:
+
+[source,xml,indent=0,subs="verbatim,quotes,attributes"]
+----
+	<dependency>
+		<groupId>javax.websocket</groupId>
+		<artifactId>javax.websocket-api</artifactId>
+	</dependency>
+----
 
 
 
@@ -7439,6 +7896,51 @@ following example:
 [source,properties,indent=0]
 ----
 	spring.webservices.wsdl-locations=classpath:/wsdl
+----
+
+
+
+[[boot-features-webservices-template]]
+== Calling Web Services with `WebServiceTemplate`
+If you need to call remote Web services from your application, you can use the
+{spring-webservices-reference}#client-web-service-template[`WebServiceTemplate`] class.
+Since `WebServiceTemplate` instances often need to be customized before being used, Spring
+Boot does not provide any single auto-configured `WebServiceTemplate` bean. It does,
+however, auto-configure a `WebServiceTemplateBuilder`, which can be used to create
+`WebServiceTemplate` instances when needed.
+
+The following code shows a typical example:
+
+[source,java,indent=0]
+----
+	@Service
+	public class MyService {
+
+		private final WebServiceTemplate webServiceTemplate;
+
+		public MyService(WebServiceTemplateBuilder webServiceTemplateBuilder) {
+			this.webServiceTemplate = webServiceTemplateBuilder.build();
+		}
+
+		public DetailsResp someWsCall(DetailsReq detailsReq) {
+			 return (DetailsResp) this.webServiceTemplate.marshalSendAndReceive(detailsReq, new SoapActionCallback(ACTION));
+
+		}
+
+	}
+----
+
+By default, `WebServiceTemplateBuilder` detects a suitable HTTP-based
+`WebServiceMessageSender` using the available HTTP client libraries on the classpath. You
+can also customize read and connection timeouts as follows:
+
+[source,java,indent=0]
+----
+	@Bean
+	public WebServiceTemplate webServiceTemplate(WebServiceTemplateBuilder builder) {
+		return builder.messageSenders(new HttpWebServiceMessageSenderBuilder()
+				.setConnectTimeout(5000).setReadTimeout(2000).build()).build();
+	}
 ----
 
 
@@ -7657,6 +8159,23 @@ example:
 [source,java,indent=0]
 ----
 include::{test-examples}/autoconfigure/UserServiceAutoConfigurationTests.java[tag=test-env]
+----
+
+The runner can also be used to display the `ConditionEvaluationReport`. The report can be printed
+at `INFO` or `DEBUG` level. The following example shows how to use the `ConditionEvaluationReportLoggingListener`
+to print the report in auto-configuration tests.
+
+[source,java,indent=0]
+----
+	@Test
+	public void autoConfigTest {
+		ConditionEvaluationReportLoggingListener initializer = new ConditionEvaluationReportLoggingListener(
+				LogLevel.INFO);
+		ApplicationContextRunner contextRunner = new ApplicationContextRunner()
+				.withInitializer(initializer).run((context) -> {
+						// Do something...
+				});
+	}
 ----
 
 

@@ -307,7 +307,7 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 			EventListener listener = new AccessLogShutdownListener(worker,
 					accessLogReceiver);
 			deploymentInfo.addListener(new ListenerInfo(AccessLogShutdownListener.class,
-					new ImmediateInstanceFactory<EventListener>(listener)));
+					new ImmediateInstanceFactory<>(listener)));
 			deploymentInfo.addInitialHandlerChainWrapper(
 					(handler) -> createAccessLogHandler(handler, accessLogReceiver));
 		}
@@ -348,7 +348,7 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 			DeploymentInfo deployment, ServletContextInitializer... initializers) {
 		ServletContextInitializer[] mergedInitializers = mergeInitializers(initializers);
 		Initializer initializer = new Initializer(mergedInitializers);
-		deployment.addServletContainerInitalizer(new ServletContainerInitializerInfo(
+		deployment.addServletContainerInitializer(new ServletContainerInitializerInfo(
 				Initializer.class,
 				new ImmediateInstanceFactory<ServletContainerInitializer>(initializer),
 				NO_CLASSES));
