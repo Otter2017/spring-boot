@@ -10,11 +10,7 @@
 	<name>Spring Boot Build</name>
 	<description>Spring Boot Build</description>
 	<properties>
-<<<<<<< HEAD
 		<revision>2.0.5.RELEASE</revision>
-=======
-		<revision>2.1.0.BUILD-SNAPSHOT</revision>
->>>>>>> 0b6bba9473e917ac450c4ee1f3d9b42bafa35c7f
 		<main.basedir>${basedir}</main.basedir>
 	</properties>
 	<!-- Most elements are in profiles so they are stripped out during maven-flatten -->
@@ -53,7 +49,7 @@
 								<id>checkstyle-validation</id>
 								<phase>validate</phase>
 								<configuration>
-									<skip>${disable.checks}</skip>
+									<skip>true</skip>
 									<configLocation>src/checkstyle/checkstyle.xml</configLocation>
 									<suppressionsLocation>src/checkstyle/checkstyle-suppressions.xml</suppressionsLocation>
 									<includeTestSourceDirectory>true</includeTestSourceDirectory>
@@ -73,7 +69,7 @@
 							<execution>
 								<phase>validate</phase>
 								<configuration>
-									<skip>${disable.checks}</skip>
+									<skip>true</skip>
 								</configuration>
 								<goals>
 									<goal>validate</goal>
