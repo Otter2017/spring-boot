@@ -259,6 +259,7 @@ public class SpringApplication {
 	 */
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public SpringApplication(ResourceLoader resourceLoader, Class<?>... primarySources) {
+		//#1
 		this.resourceLoader = resourceLoader;
 		Assert.notNull(primarySources, "PrimarySources must not be null");
 		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
@@ -269,6 +270,9 @@ public class SpringApplication {
 		this.mainApplicationClass = deduceMainApplicationClass();
 	}
 
+	/**
+	 * 查找类加载器中是否包含特定的类，确定应用程序类型 便于初始化环境
+	 */
 	private WebApplicationType deduceWebApplicationType() {
 		if (ClassUtils.isPresent(REACTIVE_WEB_ENVIRONMENT_CLASS, null)
 				&& !ClassUtils.isPresent(MVC_WEB_ENVIRONMENT_CLASS, null)) {
@@ -282,6 +286,9 @@ public class SpringApplication {
 		return WebApplicationType.SERVLET;
 	}
 
+	/**
+	 *  查找申明了main函数的类，作为应用程序主类
+	 */
 	private Class<?> deduceMainApplicationClass() {
 		try {
 			StackTraceElement[] stackTrace = new RuntimeException().getStackTrace();
@@ -304,6 +311,8 @@ public class SpringApplication {
 	 * @return a running {@link ApplicationContext}
 	 */
 	public ConfigurableApplicationContext run(String... args) {
+		//#2
+		// 用于计算初始化整个程序用时
 		StopWatch stopWatch = new StopWatch();
 		stopWatch.start();
 		ConfigurableApplicationContext context = null;
@@ -312,10 +321,8 @@ public class SpringApplication {
 		SpringApplicationRunListeners listeners = getRunListeners(args);
 		listeners.starting();
 		try {
-			ApplicationArguments applicationArguments = new DefaultApplicationArguments(
-					args);
-			ConfigurableEnvironment environment = prepareEnvironment(listeners,
-					applicationArguments);
+			ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
+			ConfigurableEnvironment environment = prepareEnvironment(listeners,applicationArguments);
 			configureIgnoreBeanInfo(environment);
 			Banner printedBanner = printBanner(environment);
 			context = createApplicationContext();
@@ -324,6 +331,7 @@ public class SpringApplication {
 					new Class[] { ConfigurableApplicationContext.class }, context);
 			prepareContext(context, environment, listeners, applicationArguments,
 					printedBanner);
+			//#3 调用spring框架根据传入的类型或程序包名称扫描应用程序包含的类
 			refreshContext(context);
 			afterRefresh(context, applicationArguments);
 			stopWatch.stop();
@@ -358,11 +366,16 @@ public class SpringApplication {
 		return environment;
 	}
 
+	/**
+	 * 准备应用程序上下文：设置资源加载器
+	 *
+	 */
 	private void prepareContext(ConfigurableApplicationContext context,
 			ConfigurableEnvironment environment, SpringApplicationRunListeners listeners,
 			ApplicationArguments applicationArguments, Banner printedBanner) {
 		context.setEnvironment(environment);
 		postProcessApplicationContext(context);
+		// 扫描properties/yaml/xml/yml配置文件
 		applyInitializers(context);
 		listeners.contextPrepared(context);
 		if (this.logStartupInfo) {
@@ -381,6 +394,7 @@ public class SpringApplication {
 		Set<Object> sources = getAllSources();
 		Assert.notEmpty(sources, "Sources must not be empty");
 		load(context, sources.toArray(new Object[0]));
+		// #扫描配置文件
 		listeners.contextLoaded(context);
 	}
 
@@ -407,6 +421,12 @@ public class SpringApplication {
 				SpringApplicationRunListener.class, types, this, args));
 	}
 
+	/**
+	 *
+	 * @param type 传入的类型
+	 * @param <T>
+	 * @return 返回查找spring-boot/resources/META-INF/spring.factories得到的类型列表，并生成的实例
+	 */
 	private <T> Collection<T> getSpringFactoriesInstances(Class<T> type) {
 		return getSpringFactoriesInstances(type, new Class<?>[] {});
 	}
@@ -503,6 +523,7 @@ public class SpringApplication {
 	}
 
 	/**
+	 * 选择配置文件
 	 * Configure which profiles are active (or active by default) for this application
 	 * environment. Additional profiles may be activated during configuration file
 	 * processing via the {@code spring.profiles.active} property.
@@ -562,6 +583,9 @@ public class SpringApplication {
 	 * class before falling back to a suitable default.
 	 * @return the application context (not yet refreshed)
 	 * @see #setApplicationContextClass(Class)
+	 *
+	 * 根据初始化SpringApplication类时确定的应用程序类型生成上下文（基于注解的/交互式web/servlet）
+	 *
 	 */
 	protected ConfigurableApplicationContext createApplicationContext() {
 		Class<?> contextClass = this.applicationContextClass;
@@ -592,6 +616,7 @@ public class SpringApplication {
 	 * Apply any relevant post processing the {@link ApplicationContext}. Subclasses can
 	 * apply additional processing as required.
 	 * @param context the application context
+	 * 设置bean工厂/资源加载器/类加载器
 	 */
 	protected void postProcessApplicationContext(ConfigurableApplicationContext context) {
 		if (this.beanNameGenerator != null) {
@@ -674,6 +699,7 @@ public class SpringApplication {
 	 * Load beans into the application context.
 	 * @param context the context to load beans into
 	 * @param sources the sources to load
+	 * 将主类/主程序包 注册到bean定义注册器中(未扫描及生成实例)
 	 */
 	protected void load(ApplicationContext context, Object[] sources) {
 		if (logger.isDebugEnabled()) {
