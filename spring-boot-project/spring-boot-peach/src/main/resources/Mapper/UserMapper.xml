@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="org.springframework.boot.peach.mybatis.mapper.UserMapper">
+	<resultMap id="BaseResultMap" type="org.springframework.boot.peach.mybatis.entity.User">
+		<id column="UID" property="uid" jdbcType="VARCHAR"/>
+		<result column="USERNAME" property="userName" jdbcType="VARCHAR"/>
+		<result column="PASSWORD" property="password" jdbcType="VARCHAR"/>
+		<result column="VALID" property="valid" jdbcType="BOOLEAN"/>
+	</resultMap>
+	<sql id="Base_Column_List">
+		UID,USERNAME,PASSWORD,VALID
+	</sql>
+	<select id="login" resultMap="BaseResultMap" parameterType="java.util.Map">
+		SELECT
+		<include refid="Base_Column_List"/>
+		FROM T_User
+		WHERE UserName=#{UserName,jdbcType=VARCHAR}
+		AND Password=#{Password,jdbcType=VARCHAR}
+	</select>
+	<insert id="create" parameterType="org.springframework.boot.peach.mybatis.entity.User">
+		INSERT INTO T_User
+		(UID,UserName,Password,Valid)
+		VALUES
+		(#{UID,jdbcType=VARCHAR},#{UserName,jdbcType=VARCHAR},#{Password,jdbcType=VARCHAR},#{Valid,jdbcType=BOOLEAN})
+	</insert>
+</mapper>

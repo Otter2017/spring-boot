@@ -6,9 +6,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.peach.mybatis.entity.User;
+import org.springframework.boot.peach.mybatis.service.UserService;
 import org.springframework.stereotype.Component;
 
 import java.text.NumberFormat;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Component
 public class MainRunner implements CommandLineRunner {
@@ -25,6 +30,7 @@ public class MainRunner implements CommandLineRunner {
         testAutoConfig();
         testAutowiredConditional();
         testNumberFormat();
+		testMybatis();
     }
 
     // 测试根据配置文件注入实体类
@@ -51,5 +57,18 @@ public class MainRunner implements CommandLineRunner {
         log.info(longNumber);
         log.info(doubleNumber);
     }
+
+	@Autowired
+	private UserService userService;
+
+	public void testMybatis(){
+		Map<String, String> params = new HashMap<>();
+		params.put("UserName", "crab");
+		params.put("Password", "123");
+		List<User> users = userService.login(params);
+		for (User user:users){
+			System.out.println(user);
+		}
+	}
 
 }
