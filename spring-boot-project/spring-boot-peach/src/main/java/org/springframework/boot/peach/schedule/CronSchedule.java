@@ -12,7 +12,7 @@ public class CronSchedule {
     //* cron 设置任务开始时间点和间隔,在秒数为0 15和35时执行
     @Scheduled(cron = "0,15,35 * * * * ?")
     void sayHello() {
-        log.info("Hello,Cron schedule schedule.");
+        log.info(Thread.currentThread().getName()+" Hello,Cron schedule schedule.");
         try {
             Thread.currentThread().sleep(1000);
         } catch (Exception ex) {

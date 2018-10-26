@@ -1,6 +1,7 @@
 package org.springframework.boot.peach;
 
 import org.springframework.boot.peach.autoconfig.Computer;
+import org.springframework.boot.peach.autoconfig.PeachVersion;
 import org.springframework.boot.peach.conditional.Factory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,7 @@ public class MainRunner implements CommandLineRunner {
         testAutowiredConditional();
         testNumberFormat();
 		testMybatis();
+		testVersionInfo();
     }
 
     // 测试根据配置文件注入实体类
@@ -69,6 +71,11 @@ public class MainRunner implements CommandLineRunner {
 		for (User user:users){
 			System.out.println(user);
 		}
+	}
+
+	private void testVersionInfo(){
+		PeachVersion version =beanFactory.getBean(PeachVersion.class);
+		System.out.println(version.getVersionInfo());
 	}
 
 }

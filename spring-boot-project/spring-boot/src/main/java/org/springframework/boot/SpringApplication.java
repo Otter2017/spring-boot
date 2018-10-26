@@ -523,7 +523,7 @@ public class SpringApplication {
 	}
 
 	/**
-	 * 选择配置文件
+	 * 获取候选配置文件列表
 	 * Configure which profiles are active (or active by default) for this application
 	 * environment. Additional profiles may be activated during configuration file
 	 * processing via the {@code spring.profiles.active} property.
